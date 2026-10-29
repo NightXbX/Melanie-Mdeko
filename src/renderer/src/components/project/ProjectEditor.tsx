@@ -41,7 +41,7 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
     try {
       const file = await window.mdeko.projects.export(projectId, format)
       // Projets › 2026 › Mme Durand : on montre où le fichier a été rangé.
-      const where = file.split(/[\/]/).slice(-4, -1).join(' › ')
+      const where = file.split(/[\\/]/).slice(-4, -1).join(' › ')
       notify(`Design book enregistré dans ${where}`)
     } catch (e) {
       notify(`Le design book n’a pas pu être créé : ${(e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`)

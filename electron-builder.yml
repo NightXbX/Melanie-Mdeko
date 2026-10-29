@@ -27,4 +27,15 @@ mac:
     LSHasLocalizedDisplayName: false
 dmg:
   title: Mdeko
+# Version Windows : pour que le développeur teste l'appli sur son PC (non signée, comme sur Mac).
+win:
+  target:
+    - target: nsis
+      arch: x64
+nsis:
+  oneClick: true
+  perMachine: false
+  createDesktopShortcut: true
+  shortcutName: Mdeko
+  artifactName: ${productName}-${version}-windows-installation.${ext}
 publish: null

@@ -12,7 +12,8 @@
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
-    "dist:mac": "electron-vite build && electron-builder --mac --arm64"
+    "dist:mac": "electron-vite build && electron-builder --mac --arm64",
+    "dist:win": "electron-vite build && electron-builder --win --x64"
   },
   "devDependencies": {
     "@fontsource/poppins": "5.3.0",
