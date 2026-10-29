@@ -107,12 +107,17 @@ export function getProject(db: DatabaseSync, id: number): Project | null {
   }
 }
 
+// Les pièces gardées conservent leur identifiant : les articles de la shopping list y restent rangés.
 export function setRooms(db: DatabaseSync, projectId: number, names: string[]): void {
-  db.prepare('DELETE FROM rooms WHERE project_id = ?').run(projectId)
-  names
-    .map((n) => n.trim())
-    .filter(Boolean)
-    .forEach((name, sort) => db.prepare('INSERT INTO rooms (project_id, name, sort) VALUES (?, ?, ?)').run(projectId, name, sort))
+  const existing = db.prepare('SELECT id, name FROM rooms WHERE project_id = ?').all(projectId) as { id: number; name: string }[]
+  const wanted = names.map((n) => n.trim()).filter(Boolean)
+  const key = (n: string) => n.toLocaleLowerCase('fr')
+  for (const r of existing) if (!wanted.some((n) => key(n) === key(r.name))) db.prepare('DELETE FROM rooms WHERE id = ?').run(r.id)
+  wanted.forEach((name, sort) => {
+    const kept = existing.find((r) => key(r.name) === key(name))
+    if (kept) db.prepare('UPDATE rooms SET name = ?, sort = ? WHERE id = ?').run(name, sort, kept.id)
+    else db.prepare('INSERT INTO rooms (project_id, name, sort) VALUES (?, ?, ?)').run(projectId, name, sort)
+  })
   touch(db, projectId)
 }
 
@@ -182,12 +187,13 @@ function cards(db: DatabaseSync, needId: number, role: 'choice' | 'alternative')
 function getNeeds(db: DatabaseSync, projectId: number): ProjectNeed[] {
   const rows = db
     .prepare(
-      `SELECT n.id, n.label, c.name AS category FROM needs n LEFT JOIN categories c ON c.id = n.category_id
+      `SELECT n.id, n.room_id, n.label, c.name AS category FROM needs n LEFT JOIN categories c ON c.id = n.category_id
        WHERE n.project_id = ? ORDER BY n.sort, n.id`
     )
     .all(projectId) as Row[]
   return rows.map((r) => ({
     id: r.id as number,
+    roomId: r.room_id as number | null,
     label: r.label as string | null,
     category: r.category as string | null,
     choice: cards(db, r.id as number, 'choice')[0] ?? null,
@@ -239,11 +245,11 @@ function setNeedArticles(db: DatabaseSync, needId: number, choiceId: number | nu
     )
 }
 
-export function addNeed(db: DatabaseSync, projectId: number, articleId: number): number {
+export function addNeed(db: DatabaseSync, projectId: number, articleId: number, roomId: number | null = null): number {
   const cat = db.prepare('SELECT category_id FROM articles WHERE id = ?').get(articleId) as { category_id: number | null }
   const next = (db.prepare('SELECT coalesce(max(sort), -1) + 1 AS n FROM needs WHERE project_id = ?').get(projectId) as { n: number }).n
   const needId = Number(
-    db.prepare('INSERT INTO needs (project_id, category_id, sort) VALUES (?, ?, ?)').run(projectId, cat.category_id, next).lastInsertRowid
+    db.prepare('INSERT INTO needs (project_id, room_id, category_id, sort) VALUES (?, ?, ?, ?)').run(projectId, roomId, cat.category_id, next).lastInsertRowid
   )
   setNeedArticles(db, needId, articleId, suggestAlternatives(db, articleId), true)
   touch(db, projectId)
@@ -265,6 +271,10 @@ export function setNeedChoice(db: DatabaseSync, needId: number, articleId: numbe
 export function setNeedAlternatives(db: DatabaseSync, needId: number, articleIds: number[]): void {
   const choice = cards(db, needId, 'choice')[0]?.id ?? null
   setNeedArticles(db, needId, choice, articleIds, false)
+}
+
+export function setNeedRoom(db: DatabaseSync, needId: number, roomId: number | null): void {
+  db.prepare('UPDATE needs SET room_id = ? WHERE id = ?').run(roomId, needId)
 }
 
 export function removeNeed(db: DatabaseSync, needId: number): void {

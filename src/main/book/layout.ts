@@ -37,7 +37,8 @@ export interface BookData {
   wishes: string
   closing: string
   renders: { id: number; image: ImageRef; inset: ImageRef | null; section: 'plans' | 'changes'; caption: string | null }[]
-  needs: { id: number; title: string; choice: BookArticle | null; alternatives: BookArticle[] }[]
+  // Rangés par pièce (articles sans pièce en tête), dans l'ordre des pièces du projet.
+  needs: { id: number; title: string; room: { id: number; name: string } | null; choice: BookArticle | null; alternatives: BookArticle[] }[]
   paints: { brand: string; promoCode: string | null; items: { name: string; reference: string | null; hex: string | null }[] }[]
   artisans: { trade: string; name: string; city: string | null; phone: string | null }[]
   notes: BookNote[]
@@ -126,9 +127,9 @@ function chrome(theme: ThemeId, page: number, section: string): Element[] {
   }
 }
 
-// Intercalaire de section : titre horizontal, lisible, numéroté comme dans le sommaire.
-function dividerPage(theme: ThemeId, title: string, number: number, key: string): Page {
-  const n = two(number)
+// Intercalaire : titre horizontal, lisible, avec un sur-titre (numéro de section du sommaire, ou « Shopping list »
+// au-dessus d'une pièce).
+function dividerPage(theme: ThemeId, title: string, n: string, key: string): Page {
   switch (theme) {
     case 'classique':
       return {
@@ -299,7 +300,16 @@ function needPages(theme: ThemeId, need: BookData['needs'][number]): Page[] {
       letterSpacing: 2
     }, suffix ? {} : { edit: `needLabel:${need.id}` })
 
-  const el: Element[] = [title()]
+  const room = () =>
+    text({ x: 297 - MARGIN - 90, y: 12 + top, w: 90, h: 7 }, need.room?.name.toUpperCase() ?? '', {
+      size: 11,
+      weight: 300,
+      color: COLORS.taupeDark,
+      letterSpacing: 2,
+      align: 'right'
+    })
+
+  const el: Element[] = [title(), room()]
   const c = need.choice
   if (c) {
     const photo = { x: MARGIN, y: 22 + top, w: 128, h: 118 }
@@ -345,7 +355,7 @@ function needPages(theme: ThemeId, need: BookData['needs'][number]): Page[] {
   // Propositions supplémentaires : grille de 4 × 2 par page.
   const rest = need.alternatives.slice(FIRST_ALTERNATIVES)
   for (let start = 0, n = 2; start < rest.length; start += ALTERNATIVES_PER_PAGE, n++) {
-    const els: Element[] = [title('  ·  AUTRES PROPOSITIONS (SUITE)')]
+    const els: Element[] = [title('  ·  AUTRES PROPOSITIONS (SUITE)'), room()]
     rest.slice(start, start + ALTERNATIVES_PER_PAGE).forEach((a, i) => {
       const x = MARGIN + (i % 4) * 65
       const y = 24 + top + Math.floor(i / 4) * 82
@@ -364,6 +374,18 @@ function needPages(theme: ThemeId, need: BookData['needs'][number]): Page[] {
   return pages
 }
 
+// Pages de la shopping list : les articles sans pièce, puis chaque pièce précédée de son intercalaire.
+function shoppingPages(theme: ThemeId, needs: BookData['needs']): Page[] {
+  const pages: Page[] = []
+  let room: number | null = null
+  for (const need of needs) {
+    if (need.room && need.room.id !== room) pages.push(dividerPage(theme, need.room.name, 'Shopping list', `room:${need.room.id}`))
+    room = need.room?.id ?? null
+    pages.push(...needPages(theme, need))
+  }
+  return pages
+}
+
 const RECAP_ROWS = 15
 
 function formatEuros(cents: number): string {
@@ -378,13 +400,26 @@ function recapPages(theme: ThemeId, needs: BookData['needs'], dateLabel: string)
   const pages: Page[] = []
   const total = rows.reduce((sum, n) => sum + (n.choice!.summable ? (n.choice!.priceCents ?? 0) : 0), 0)
   const partial = rows.some((n) => !n.choice!.summable)
+  // Une ligne de titre au début de chaque pièce.
+  const lines: (BookData['needs'][number] | string)[] = []
+  rows.forEach((n, i) => {
+    if (n.room && n.room.id !== rows[i - 1]?.room?.id) lines.push(n.room.name)
+    lines.push(n)
+  })
   const cols = [
     { x: MARGIN, w: 58, label: 'Catégorie' },
     { x: 80, w: 112, label: 'Article' },
     { x: 194, w: 46, label: 'Fournisseur' },
     { x: 240, w: 37, label: 'Prix' }
   ]
-  for (let start = 0; start < rows.length; start += RECAP_ROWS) {
+  // Pages de RECAP_ROWS lignes ; un titre de pièce ne reste jamais seul en bas de page.
+  const chunks: (typeof lines)[] = [[]]
+  for (const l of lines) {
+    const last = chunks[chunks.length - 1]
+    if (last.length === RECAP_ROWS || (typeof l === 'string' && last.length === RECAP_ROWS - 1)) chunks.push([l])
+    else last.push(l)
+  }
+  for (const [c, slice] of chunks.entries()) {
     const head = 30 + top
     const el: Element[] = [text({ x: MARGIN, y: 12 + top, w: 200, h: 12 }, 'Récapitulatif de mes choix', { size: 22, valign: 'middle' })]
     cols.forEach((c, i) =>
@@ -398,9 +433,12 @@ function recapPages(theme: ThemeId, needs: BookData['needs'], dateLabel: string)
         })
       )
     )
-    const slice = rows.slice(start, start + RECAP_ROWS)
     slice.forEach((n, i) => {
       const y = head + 8 + i * 9.5
+      if (typeof n === 'string') {
+        el.push(text({ x: MARGIN, y, w: 200, h: 8 }, n.toUpperCase(), { size: 9, weight: 500, valign: 'bottom', color: COLORS.taupeDark, letterSpacing: 2 }))
+        return
+      }
       const a = n.choice!
       el.push(
         line(MARGIN, y - 1, 257),
@@ -410,7 +448,7 @@ function recapPages(theme: ThemeId, needs: BookData['needs'], dateLabel: string)
         text({ x: cols[3].x, y, w: cols[3].w, h: 8 }, a.price, { size: 10, weight: 400, valign: 'middle', align: 'right' })
       )
     })
-    if (start + RECAP_ROWS >= rows.length) {
+    if (c === chunks.length - 1) {
       const y = head + 8 + slice.length * 9.5 + 2
       el.push(
         line(MARGIN, y - 1, 257, COLORS.taupe, 0.3),
@@ -513,7 +551,7 @@ export function buildBook(d: BookData): Page[] {
   if (d.needs.length) {
     sections.push({
       title: 'Shopping list',
-      pages: [...d.needs.flatMap((n) => needPages(t, n)), ...recapPages(t, d.needs, d.dateLabel)],
+      pages: [...shoppingPages(t, d.needs), ...recapPages(t, d.needs, d.dateLabel)],
       divider: true
     })
   }
@@ -527,7 +565,7 @@ export function buildBook(d: BookData): Page[] {
 
   // Intercalaires numérotés comme le sommaire, puis numérotation : couverture = 1, sommaire = 2.
   sections.forEach((s, i) => {
-    if (s.divider) s.pages.unshift(dividerPage(t, s.title, i + 1, `section:${i + 1}`))
+    if (s.divider) s.pages.unshift(dividerPage(t, s.title, two(i + 1), `section:${i + 1}`))
   })
   let page = 3
   const toc: { range: string; title: string }[] = []

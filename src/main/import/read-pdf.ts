@@ -20,6 +20,7 @@ export interface RowDraft {
   url: string | null
   supplier: string
   images: EncodedImage[]
+  highlighted: boolean // surligné au fluo : « Mon choix »
 }
 
 export interface Cover {
@@ -53,18 +54,26 @@ interface PageData {
   hCoverage: Map<number, number> // y arrondi -> longueur horizontale tracée
   verticals: number[] // x des traits verticaux et bords de rectangles hauts
   discs: { x0: number; y0: number; x1: number; y1: number; hex: string }[]
+  highlights: { y0: number; y1: number }[] // surlignages fluo
 }
 
-const SECTION_TITLE_SIZE = 40
+const SECTION_TITLE_SIZE = 32 // intercalaires : 39 à 47 pt ; sommaire : 26 pt
 const RENDER_MIN_WIDTH = 1000
 const COLUMN = { width: 136, min: 110, max: 160 }
 const MONTHS = ['janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin', 'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre']
 const FOOTER = /^(Design Book|[–-]?\s*Page\s+\d+|Design Book\s*[–-]\s*Page\s+\d+)\s*$/i
 
+// Couleur de surligneur : vive et lumineuse (jaune, vert, rose fluo…), jamais le taupe ni le blanc.
+function isFluo(cs: Mupdf.ColorSpace | null, color: number[]): boolean {
+  const n = cs?.getNumberOfComponents()
+  const rgb = n === 3 ? color : n === 4 ? color.slice(0, 3).map((c) => (1 - c) * (1 - color[3])) : null
+  return !!rgb && Math.max(...rgb) > 0.85 && Math.max(...rgb) - Math.min(...rgb) > 0.5
+}
+
 // --- Lecture brute d'une page --------------------------------------------------------------------
 
 function readPage(mupdf: MupdfModule, page: Mupdf.PDFPage | Mupdf.Page): PageData {
-  const data: PageData = { lines: [], images: [], links: [], hCoverage: new Map(), verticals: [], discs: [] }
+  const data: PageData = { lines: [], images: [], links: [], hCoverage: new Map(), verticals: [], discs: [], highlights: [] }
   const st = JSON.parse(page.toStructuredText('preserve-whitespace').asJSON()) as {
     blocks: { type: string; lines?: { text: string; font: { size: number }; bbox: { x: number; y: number; w: number; h: number } }[] }[]
   }
@@ -82,7 +91,7 @@ function readPage(mupdf: MupdfModule, page: Mupdf.PDFPage | Mupdf.Page): PageDat
   }
 
   const addH = (y: number, length: number) => data.hCoverage.set(Math.round(y), (data.hCoverage.get(Math.round(y)) ?? 0) + length)
-  const walk = (path: Mupdf.Path, ctm: Mupdf.Matrix, fill: number[] | null) => {
+  const walk = (path: Mupdf.Path, ctm: Mupdf.Matrix, fill: number[] | null, highlight = false) => {
     const pts: [number, number][] = []
     const at = (x: number, y: number): [number, number] => [ctm[0] * x + ctm[2] * y + ctm[4], ctm[1] * x + ctm[3] * y + ctm[5]]
     let last: [number, number] | null = null
@@ -114,12 +123,13 @@ function readPage(mupdf: MupdfModule, page: Mupdf.PDFPage | Mupdf.Page): PageDat
     // Pastille de couleur : forme pleine à peu près carrée (disque).
     const w = box.x1 - box.x0
     const h = box.y1 - box.y0
+    if (highlight) data.highlights.push({ y0: box.y0, y1: box.y1 })
     if (fill && w > 25 && w < 120 && Math.abs(w - h) <= 4) {
       data.discs.push({ ...box, hex: '#' + fill.slice(0, 3).map((c) => Math.round(c * 255).toString(16).padStart(2, '0').toUpperCase()).join('') })
     }
   }
   const device = new mupdf.Device({
-    fillPath: (path, _eo, ctm, cs, color) => walk(path, ctm, cs && cs.getNumberOfComponents() === 3 ? color : null),
+    fillPath: (path, _eo, ctm, cs, color) => walk(path, ctm, cs?.getNumberOfComponents() === 3 ? color : null, isFluo(cs, color)),
     strokePath: (path, _s, ctm) => walk(path, ctm, null),
     fillImage: (image, ctm) => {
       const xs = [ctm[4], ctm[4] + ctm[0], ctm[4] + ctm[2], ctm[4] + ctm[0] + ctm[2]]
@@ -216,7 +226,8 @@ function readTable(mupdf: MupdfModule, d: PageData, section: string, cols: numbe
     const name = text(cells[1])
     const priceText = text(cells[2])
     if (!name && !priceText && !photos.length) continue
-    out.push({ section, name, priceText, url, supplier: text(cells[4]), images: photos.map((p) => encodeImage(mupdf, p.image)) })
+    const highlighted = d.highlights.some((h) => inside(h.y0, h.y1))
+    out.push({ section, name, priceText, url, supplier: text(cells[4]), images: photos.map((p) => encodeImage(mupdf, p.image)), highlighted })
   }
   return out
 }
@@ -233,8 +244,10 @@ function readCover(d: PageData): Cover | null {
     if (m && month >= 0) bookDate = `${m[2]}-${String(month + 1).padStart(2, '0')}`
   }
   const client = texts.find((t) => t.toLowerCase() !== 'design book' && t.includes(' ') && !/\d{4}$/.test(t)) ?? ''
-  const title = ['Mme et M.', 'Mme', 'M.', 'Mr', 'Mlle'].find((c) => client.startsWith(`${c} `)) ?? ''
-  const raw = title ? client.slice(title.length).trim() : client
+  const couple = /^(?:Mme\s*(?:&|et)\s*(?:M\.?|Mr)|(?:M\.?|Mr)\s*(?:&|et)\s*Mme)\s+/i.exec(client)
+  const single = ['Mme', 'M.', 'Mr', 'Mlle'].find((c) => client.startsWith(`${c} `))
+  const title = couple ? 'Mme et M.' : (single ?? '')
+  const raw = couple ? client.slice(couple[0].length).trim() : single ? client.slice(single.length).trim() : client
   const name = raw === raw.toUpperCase() ? raw.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_, s: string, c: string) => s + c.toUpperCase()) : raw
   return { title: title === 'Mr' ? 'M.' : title, name, bookDate }
 }

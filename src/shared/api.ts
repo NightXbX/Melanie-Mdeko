@@ -99,7 +99,8 @@ export interface ProjectsApi {
   updateRender(renderId: number, patch: { section?: RenderSection; insetImageId?: number | null; caption?: string | null }): Promise<void>
   removeRender(renderId: number): Promise<void>
   reorder(table: 'renders' | 'needs', ids: number[]): Promise<void>
-  addNeed(id: number, articleId: number): Promise<number>
+  addNeed(id: number, articleId: number, roomId?: number | null): Promise<number>
+  setNeedRoom(needId: number, roomId: number | null): Promise<void>
   setNeedChoice(needId: number, articleId: number): Promise<void>
   setNeedAlternatives(needId: number, articleIds: number[]): Promise<void>
   removeNeed(needId: number): Promise<void>
@@ -238,7 +239,7 @@ export const IPC = {
 
 export const PROJECT_METHODS = [
   'list', 'create', 'get', 'update', 'trash', 'restore', 'setRooms', 'addRenders', 'updateRender', 'removeRender',
-  'reorder', 'addNeed', 'setNeedChoice', 'setNeedAlternatives', 'removeNeed', 'listPaints', 'createPaint',
+  'reorder', 'addNeed', 'setNeedRoom', 'setNeedChoice', 'setNeedAlternatives', 'removeNeed', 'listPaints', 'createPaint',
   'listArtisans', 'saveArtisan', 'setLinks', 'getSettings', 'saveSettings', 'pages', 'editText', 'addNote', 'moveNote',
   'deleteNote', 'export', 'openFolder'
 ] as const satisfies readonly (keyof ProjectsApi)[]

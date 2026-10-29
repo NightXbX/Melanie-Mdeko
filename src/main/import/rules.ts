@@ -47,6 +47,31 @@ export function category(section: string, name: string): [string, string] {
   return [family, 'Divers']
 }
 
+// Titre de section connu de la shopping list (« LUMINAIRES », « TAPIS »…).
+export const isKnownSection = (section: string) => cle(section) in SECTIONS
+
+const ROOM_WORDS = ['entree', 'salon', 'sejour', 'cuisine', 'salleamanger', 'chambre', 'salle', 'palier', 'couloir', 'wc', 'toilettes',
+  'buanderie', 'dressing', 'cellier', 'mezzanine', 'veranda', 'terrasse', 'jardin', 'garage', 'cinema', 'billard', 'grenier', 'combles',
+  'escalier', 'hall', 'degagement', 'bureau', 'piecedevie', 'suiteparentale']
+const ROOM_KINDS = ['parentale', 'principale', 'enfant', 'enfants', 'amis', 'bebe', 'invites', 'ado', 'ados']
+
+// Intercalaire de pièce (« ENTRÉE », « CHAMBRE PARENTALE »…) plutôt que de catégorie.
+export function isRoomSection(section: string): boolean {
+  const key = cle(section)
+  return !!key && !isKnownSection(section) && ROOM_WORDS.some((w) => key.startsWith(w))
+}
+
+// « CHAMBRE LOUISE » -> « Chambre Louise », « CUISINE – SALLE À MANGER » -> « Cuisine – salle à manger ».
+export function roomName(section: string): string {
+  const words = section.split(/\s+/).filter(Boolean).map((w) => w.toLowerCase())
+  return words
+    .map((w, i) => {
+      const firstName = i > 0 && words[i - 1] === 'chambre' && !ROOM_KINDS.includes(cle(w)) && !['de', 'd’', "d'", 'du', 'des'].includes(w)
+      return i === 0 || firstName ? w.charAt(0).toUpperCase() + w.slice(1) : w
+    })
+    .join(' ')
+}
+
 export function supplier(raw: string): string | null {
   const text = raw.split(/\s+/).filter(Boolean).join(' ')
   if (!text) return null

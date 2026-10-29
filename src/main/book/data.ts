@@ -83,12 +83,17 @@ export function bookData(db: DatabaseSync, dataRoot: string, projectId: number):
         section: r.section
       }
     }),
-    needs: project.needs.map((n) => ({
-      id: n.id,
-      title: n.label ?? n.category ?? 'Shopping list',
-      choice: n.choice ? bookArticle(db, dataRoot, n.choice) : null,
-      alternatives: n.alternatives.map((a) => bookArticle(db, dataRoot, a))
-    })),
+    needs: [null, ...project.rooms.map((r) => r.id)].flatMap((roomId) =>
+      project.needs
+        .filter((n) => n.roomId === roomId)
+        .map((n) => ({
+          id: n.id,
+          title: n.label ?? n.category ?? 'Shopping list',
+          room: project.rooms.find((r) => r.id === roomId) ?? null,
+          choice: n.choice ? bookArticle(db, dataRoot, n.choice) : null,
+          alternatives: n.alternatives.map((a) => bookArticle(db, dataRoot, a))
+        }))
+    ),
     paints,
     artisans: project.artisanIds
       .map((id) => artisansById.get(id))

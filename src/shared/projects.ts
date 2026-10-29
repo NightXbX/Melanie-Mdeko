@@ -30,6 +30,7 @@ export interface ProjectRender {
 
 export interface ProjectNeed {
   id: number
+  roomId: number | null
   label: string | null
   category: string | null
   choice: ArticleCard | null

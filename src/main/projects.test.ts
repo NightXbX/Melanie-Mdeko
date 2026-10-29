@@ -16,6 +16,7 @@ import {
   saveArtisan,
   saveSettings,
   setNeedChoice,
+  setNeedRoom,
   setProjectLinks,
   setRooms,
   suggestAlternatives,
@@ -70,6 +71,21 @@ describe('besoins', () => {
     expect(need.category).toBe('Fauteuils')
     expect(need.choice?.name).toBe('Fauteuil choisi')
     expect(need.alternatives.map((a) => a.id)).toEqual([2, 5, 4])
+  })
+
+  it('range un besoin dans une pièce, qui le garde quand on ajoute ou retire d’autres pièces', () => {
+    const id = createProject(db, '', 'Durand')
+    setRooms(db, id, ['Entrée', 'Salon'])
+    const salon = getProject(db, id)!.rooms[1].id
+    const need = addNeed(db, id, 1, salon)
+    setNeedRoom(db, addNeed(db, id, 6), salon)
+    setRooms(db, id, ['Salon', 'Chambre'])
+    const project = getProject(db, id)!
+    expect(project.rooms.map((r) => r.name)).toEqual(['Salon', 'Chambre'])
+    expect(project.rooms[0].id).toBe(salon)
+    expect(project.needs.map((n) => n.roomId)).toEqual([salon, salon])
+    setRooms(db, id, ['Chambre'])
+    expect(getProject(db, id)!.needs.find((n) => n.id === need)?.roomId).toBeNull()
   })
 
   it('échange « Mon choix » avec une alternative', () => {

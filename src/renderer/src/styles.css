@@ -1399,6 +1399,37 @@ img.pv {
 
 /* Projets : shopping list */
 
+.need-room {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.need-room + .need-room {
+  margin-top: 16px;
+}
+
+.need-room-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--separator);
+}
+
+.need-room-head h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.need-room-select {
+  margin-right: 6px;
+  max-width: 180px;
+}
+
 .need {
   padding: 16px;
   border: 1px solid var(--separator);
@@ -1407,7 +1438,9 @@ img.pv {
 
 .need-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 4px 8px;
   margin-bottom: 12px;
 }
 
@@ -1419,13 +1452,15 @@ img.pv {
 
 .need-actions {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 2px;
 }
 
 /* Deux colonnes si la place le permet, l'une sous l'autre sinon (aperçu ouvert). */
 .need-body {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
   gap: 24px;
 }
 

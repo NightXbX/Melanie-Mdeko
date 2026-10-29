@@ -31,8 +31,8 @@ const data = (over: Partial<BookData> = {}): BookData => ({
     { id: 2, image: img, inset: img, section: 'plans', caption: 'Vue du salon' }
   ],
   needs: [
-    { id: 1, title: 'Fauteuils', choice: article('Fauteuil', 30000), alternatives: [article('Autre fauteuil', 25000)] },
-    { id: 2, title: 'Papiers peints', choice: article('Papier peint', 8900, false), alternatives: [] }
+    { id: 1, title: 'Fauteuils', room: null, choice: article('Fauteuil', 30000), alternatives: [article('Autre fauteuil', 25000)] },
+    { id: 2, title: 'Papiers peints', room: null, choice: article('Papier peint', 8900, false), alternatives: [] }
   ],
   paints: [{ brand: 'Bilbo Quet Deco', promoCode: 'CODE', items: [{ name: 'Marelle', reference: null, hex: '#F4F2ED' }] }],
   artisans: [{ trade: 'Peintre', name: 'Atelier', city: 'Lille', phone: '01' }],
@@ -79,11 +79,31 @@ describe('design book', () => {
 
   it('accepte plus de 3 propositions, sur des pages « suite »', () => {
     const alternatives = Array.from({ length: 12 }, (_, i) => article(`Proposition ${i + 1}`, 1000 * (i + 1)))
-    const pages = buildBook(data({ needs: [{ id: 7, title: 'Tapis', choice: article('Tapis', 50000), alternatives }] }))
+    const pages = buildBook(data({ needs: [{ id: 7, title: 'Tapis', room: null, choice: article('Tapis', 50000), alternatives }] }))
     expect(textsOf(byKey(pages, 'need:7'))).toContain('Proposition 3')
     expect(textsOf(byKey(pages, 'need:7'))).not.toContain('Proposition 4')
     expect(textsOf(byKey(pages, 'need:7:2'))).toEqual(expect.arrayContaining(['Proposition 4', 'Proposition 11']))
     expect(textsOf(byKey(pages, 'need:7:3'))).toContain('Proposition 12')
+  })
+
+  it('range la shopping list par pièce, chacune avec son intercalaire', () => {
+    const salon = { id: 3, name: 'Salon' }
+    const pages = buildBook(
+      data({
+        needs: [
+          { id: 1, title: 'Fauteuils', room: null, choice: article('Fauteuil', 30000), alternatives: [] },
+          { id: 2, title: 'Tapis', room: salon, choice: article('Tapis', 9000), alternatives: [] },
+          { id: 4, title: 'Suspensions', room: salon, choice: article('Suspension', 9000), alternatives: [] }
+        ]
+      })
+    )
+    const keys = pages.map((p) => p.key)
+    expect(keys.filter((k) => k.startsWith('room:'))).toEqual(['room:3'])
+    expect(keys.indexOf('need:1')).toBeLessThan(keys.indexOf('room:3'))
+    expect(keys.indexOf('room:3')).toBe(keys.indexOf('need:2') - 1)
+    expect(textsOf(byKey(pages, 'room:3'))).toContain('Salon')
+    expect(textsOf(byKey(pages, 'need:4'))).toContain('SALON')
+    expect(textsOf(byKey(pages, 'recap:1'))).toEqual(expect.arrayContaining(['SALON', 'Tapis', 'Suspension']))
   })
 
   it('totalise les choix additionnables dans le récapitulatif', () => {

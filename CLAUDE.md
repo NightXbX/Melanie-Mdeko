@@ -38,6 +38,7 @@ Mac cible : **Mac fixe M1, 16 Go, macOS Tahoe 26.x** (26.2.2 déclaré ; un expo
 - **Une seule mise en page pour les deux formats** : modifier `layout.ts` change le PDF et le PPTX à l'identique.
 - Shopping list modernisée : une page par besoin (« Mon choix » en grand + 3 propositions, les suivantes sur des pages « suite » de 8 ; nombre illimité), « Voir le produit › » cliquable, puis une page « Récapitulatif de mes choix » avec le total (hors prix au m², au rouleau ou sur devis).
 - **Trois styles** au choix par projet (`projects.book_theme`) : Classique (le sien), Épuré, Contemporain. Même police, sobres, sans aplats (peu d'encre) ; rendus 3D toujours pleine largeur. Intercalaires **horizontaux et numérotés** (les titres verticaux étaient illisibles).
+- **Shopping list par pièce** : les pièces de « Vos envies » (`needs.room_id`) rangent les besoins dans l'écran du projet et dans le book (articles sans pièce d'abord, puis un intercalaire par pièce ; le récapitulatif est groupé par pièce). `setRooms` garde l'identifiant des pièces conservées.
 - **Aperçu modifiable** (`BookPreview.tsx`, mêmes pages que le PDF rendues en React) : clic sur un texte (avant-propos, envies, fin, titre de besoin, légende de rendu) pour le changer ; double-clic sur une page pour poser une annotation (`book_notes`), déplaçable par sa poignée. Les textes à saisir vides (`placeholder`) ne sont pas exportés.
 - Modèle de page partagé : `src/shared/book.ts` (éléments en mm, clés d'édition, clés de page).
 - Alternatives automatiques : même sous-catégorie, prix le plus proche, avec photo de préférence, sans doublon de lien.
@@ -51,6 +52,8 @@ Mac cible : **Mac fixe M1, 16 Go, macOS Tahoe 26.x** (26.2.2 déclaré ; un expo
 
 - Projets › « Importer… », dépôt d'un PDF sur la liste, ou Fichier › Importer (⌘I) : un design book devient un projet (client, date, pièces, rendus, besoins par sous-catégorie, teintes, artisans) et ses nouveaux articles rejoignent la shopping list ; une shopping list seule ajoute ses articles.
 - `src/main/import/` : `read-pdf.ts` (lecture par mupdf, en WASM, sans module natif), `rules.ts` (classement, mêmes listes que `tools/migration` via `src/shared/import-rules.json`), `apply.ts` (doublons : URL nettoyée, ou même nom et photo proche), `index.ts` (une seule transaction : en cas d'erreur, rien n'est modifié).
+- **Besoins** : un article surligné au fluo est « Mon choix », les autres articles de sa page sont ses propositions ; une page sans fluo prolonge le choix du même genre déjà fait dans la pièce, sinon chacun de ses articles est un choix. Book sans aucun fluo (ancien format) : un besoin par sous-catégorie, premier article = « Mon choix ».
+- **Pièces** : un intercalaire de pièce (« ENTRÉE », « CHAMBRE PARENTALE »…, `isRoomSection`) range les besoins qui suivent dans cette pièce. Sous une pièce, la catégorie d'un nouvel article se devine d'après les noms des articles existants ; un article réutilisé qui n'est qu'en « Divers » est reclassé.
 - mupdf est sous licence **AGPL-3.0** (compatible avec le dépôt public). La CI vérifie que `mupdf-wasm.wasm` est bien dans le paquet.
 - Test d'import réel : copier un design book sous `ressources/design-book-test.pdf` (jamais versionné).
 

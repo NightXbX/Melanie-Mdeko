@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { category, colorMaterial, dimensions, paintName, price, supplier } from './rules'
+import { category, colorMaterial, dimensions, isRoomSection, paintName, price, roomName, supplier } from './rules'
 
 // Mêmes cas que tools/migration/test_regles.py : l'appli et l'outil Python doivent classer pareil.
 describe('règles d’import', () => {
@@ -51,6 +51,15 @@ describe('règles d’import', () => {
     expect(category('COUSSINS - PLAID', 'Plaid blanc cassé')).toEqual(['Textiles', 'Plaids'])
     expect(category('COUSSINS', 'Housse')).toEqual(['Textiles', 'Coussins'])
     expect(category('NOUVEAUTÉ', 'Truc')).toEqual(['Décoration', 'Divers'])
+  })
+
+  it('reconnaît les intercalaires de pièces', () => {
+    for (const s of ['ENTRÉE', 'CUISINE – SALLE À MANGER', 'CHAMBRE PARENTALE', 'SALLE CINÉMA', 'PALIER']) expect(isRoomSection(s)).toBe(true)
+    for (const s of ['LUMINAIRES', 'SHOPPING LIST', 'RIDEAUX - STORE', 'CUISINE EXTERIEURE', 'DRESSING']) expect(isRoomSection(s)).toBe(false)
+    expect(roomName('CUISINE – SALLE À MANGER')).toBe('Cuisine – salle à manger')
+    expect(roomName('CHAMBRE  LOUISE')).toBe('Chambre Louise')
+    expect(roomName('CHAMBRE PARENTALE')).toBe('Chambre parentale')
+    expect(roomName('SALLE DE BAIN ')).toBe('Salle de bain')
   })
 
   it('lit le nom et la référence des teintes', () => {
