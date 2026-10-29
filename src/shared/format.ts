@@ -9,6 +9,19 @@ function montant(cents: number): string {
   return format.format(cents / 100).replace(/[  ]/g, ' ')
 }
 
+// Saisie d'un prix : « 249,99 », « 1 449 », « 1449 € » -> centimes ; null si vide ou illisible.
+export function parsePriceInput(text: string): number | null {
+  const t = text.replace(/[\s  €]/g, '').replace(',', '.')
+  if (!/^\d+(\.\d{1,2})?$/.test(t)) return null
+  return Math.round(Number.parseFloat(t) * 100)
+}
+
+// Centimes -> texte du champ de saisie : 24999 -> « 249,99 », 29900 -> « 299 ».
+export function priceInputText(cents: number | null): string {
+  if (cents === null) return ''
+  return cents % 100 === 0 ? String(cents / 100) : (cents / 100).toFixed(2).replace('.', ',')
+}
+
 // Prix tel qu'il doit apparaître pour Mélanie et dans les design books.
 export function formatPrice(price: Price): string {
   if (price.kind === 'on_quote') return 'Sur devis'

@@ -637,3 +637,280 @@ html:not([data-platform='darwin']) .sidebar-titlebar {
 .detail-list dd {
   margin: 0;
 }
+
+.detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.button-icon {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+}
+
+.button:disabled {
+  opacity: 0.45;
+}
+
+/* Formulaire d'article */
+
+.editor-title {
+  font-size: 15px;
+  font-weight: 600;
+  padding-left: 6px;
+}
+
+.editor-photos {
+  border-radius: 18px;
+  outline: 3px dashed transparent;
+  outline-offset: 6px;
+}
+
+.editor-photos.is-dragging {
+  outline-color: var(--accent);
+}
+
+.editor-drop {
+  width: 100%;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 15px;
+  color: var(--text-secondary);
+  border-style: dashed;
+  cursor: pointer;
+}
+
+.editor-drop-hint {
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.editor-thumb {
+  position: relative;
+  padding: 0;
+}
+
+.editor-thumb-main {
+  width: 100%;
+  height: 100%;
+  padding: 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+
+.editor-thumb-remove {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #1d1d1f;
+  color: #fff;
+}
+
+.editor-thumb:hover .editor-thumb-remove {
+  display: flex;
+}
+
+.editor-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  border-style: dashed;
+}
+
+.editor-status {
+  align-self: center;
+  color: var(--text-secondary);
+}
+
+.editor-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.editor-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff1ec;
+  color: #b42d00;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field > span {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.field input,
+.field select,
+.field textarea,
+.tags {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--separator);
+  border-radius: 8px;
+  background: var(--window-bg);
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.field textarea {
+  resize: vertical;
+  user-select: text;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus,
+.tags:focus-within {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 0;
+  border-color: var(--accent);
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+}
+
+.tags input {
+  flex: 1;
+  min-width: 120px;
+  min-height: 24px;
+  padding: 0 4px;
+  border: 0;
+  outline: 0;
+}
+
+.tags input:focus {
+  outline: 0;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  font-size: 13px;
+}
+
+.tag button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.tag button:hover {
+  background: var(--control-bg-hover);
+}
+
+/* Dépôt d'une photo sur la grille */
+
+.drop-overlay {
+  position: absolute;
+  inset: 12px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 3px dashed var(--accent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--window-bg) 88%, transparent);
+  color: var(--accent);
+  font-size: 17px;
+  font-weight: 500;
+  pointer-events: none;
+}
+
+.drop-overlay p {
+  margin: 0;
+}
+
+/* Message en bas de la fenêtre, avec « Annuler » */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: 560px;
+  padding: 10px 12px 10px 18px;
+  border-radius: 12px;
+  background: rgba(29, 29, 31, 0.92);
+  color: #fff;
+  font-size: 13px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+  transform: translateX(-50%);
+  animation: toast-in 0.2s ease-out;
+}
+
+.toast button {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-weight: 600;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+}
+
+/* Corbeille */
+
+.trash {
+  padding: 24px;
+}
+
+.card-static {
+  cursor: default;
+}

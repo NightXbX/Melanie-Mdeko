@@ -110,7 +110,7 @@ const ORDER: Record<Exclude<ArticleSort, 'relevance'>, string> = {
 
 // --- Lecture ------------------------------------------------------------------------------------
 
-function toCard(r: Row): ArticleCard {
+export function toCard(r: Row): ArticleCard {
   return {
     id: r.id as number,
     name: r.name as string,
@@ -120,7 +120,7 @@ function toCard(r: Row): ArticleCard {
   }
 }
 
-const CARD_COLUMNS = `
+export const CARD_COLUMNS = `
   a.id, a.name, a.price_cents, a.price_kind, a.price_text, s.name AS supplier,
   (SELECT i.sha256 FROM article_images ai JOIN images i ON i.id = ai.image_id
     WHERE ai.article_id = a.id ORDER BY ai.sort LIMIT 1) AS sha`

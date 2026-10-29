@@ -74,6 +74,61 @@ export interface ArticleFacets {
   suppliers: FacetCount[]
 }
 
+// --- Édition ---
+
+export interface CategoryOption {
+  id: number
+  name: string
+  categories: { id: number; name: string }[]
+}
+
+export interface EditableImage {
+  id: number
+  url: string
+}
+
+export interface ArticleInput {
+  id: number | null
+  name: string
+  priceCents: number | null
+  priceKind: PriceKind
+  supplier: string
+  url: string
+  categoryId: number | null
+  dimensions: string
+  colorMaterial: string
+  tags: string[]
+  privateNote: string
+  images: EditableImage[]
+}
+
+export interface EditorChoices {
+  categories: CategoryOption[]
+  suppliers: string[]
+  tags: string[]
+}
+
+// Photo préparée par l'interface : fichier d'origine + miniature JPEG sur fond blanc.
+export interface ImageUpload {
+  bytes: Uint8Array
+  ext: string
+  width: number
+  height: number
+  thumbnail: Uint8Array
+}
+
+export interface DownloadedImage {
+  bytes: Uint8Array
+  mimeType: string
+}
+
+export interface UndoResult {
+  label: string
+  articleId: number
+}
+
+export type MenuCommand = 'undo' | 'new-article'
+
 export interface MdekoApi {
   getAppInfo(): Promise<AppInfo>
   openDataFolder(): Promise<void>
@@ -82,6 +137,17 @@ export interface MdekoApi {
   articleFacets(text: string, filters: ArticleFilters): Promise<ArticleFacets>
   getArticle(id: number): Promise<ArticleDetail | null>
   openExternal(url: string): Promise<void>
+  editorChoices(): Promise<EditorChoices>
+  getArticleInput(id: number): Promise<ArticleInput | null>
+  saveArticle(input: ArticleInput): Promise<number>
+  uploadImage(image: ImageUpload): Promise<EditableImage>
+  downloadImage(url: string): Promise<DownloadedImage>
+  trashArticle(id: number): Promise<void>
+  restoreArticle(id: number): Promise<void>
+  listTrash(): Promise<ArticleCard[]>
+  undo(): Promise<UndoResult | null>
+  confirm(message: string, detail: string, action: string): Promise<boolean>
+  onMenu(listener: (command: MenuCommand) => void): () => void
 }
 
 export const IPC = {
@@ -91,5 +157,16 @@ export const IPC = {
   searchArticles: 'articles:search',
   articleFacets: 'articles:facets',
   getArticle: 'articles:get',
-  openExternal: 'app:open-external'
+  openExternal: 'app:open-external',
+  editorChoices: 'articles:editor-choices',
+  getArticleInput: 'articles:get-input',
+  saveArticle: 'articles:save',
+  uploadImage: 'images:upload',
+  downloadImage: 'images:download',
+  trashArticle: 'articles:trash',
+  restoreArticle: 'articles:restore',
+  listTrash: 'articles:list-trash',
+  undo: 'app:undo',
+  confirm: 'app:confirm',
+  menu: 'menu:command'
 } as const

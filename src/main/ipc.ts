@@ -1,14 +1,36 @@
 import type { DatabaseSync } from 'node:sqlite'
-import { app, ipcMain, shell } from 'electron'
-import { IPC, type AppInfo, type ArticleFilters, type ArticleQuery } from '@shared/api'
+import { app, BrowserWindow, dialog, ipcMain, net, shell } from 'electron'
+import {
+  IPC,
+  type AppInfo,
+  type ArticleFilters,
+  type ArticleInput,
+  type ArticleQuery,
+  type DownloadedImage,
+  type ImageUpload,
+  type UndoResult
+} from '@shared/api'
+import {
+  editorChoices,
+  getArticleInput,
+  listTrash,
+  restoreArticle,
+  saveArticle,
+  trashArticle,
+  UndoStack,
+  uploadImage
+} from './article-edit'
 import { articleFacets, getArticle, searchArticles } from './articles'
 import { listBackups } from './backup'
 import { schemaVersion } from './db/database'
 import type { DataPaths } from './paths'
 
 const MAX_PAGE = 200
+const MAX_DOWNLOAD_BYTES = 40 * 1024 * 1024
 
 export function registerIpc(db: DatabaseSync, paths: DataPaths, backupNow: () => string): void {
+  const undo = new UndoStack()
+
   ipcMain.handle(IPC.getAppInfo, (): AppInfo => {
     const last = listBackups(paths.backups)[0]
     return {
@@ -30,8 +52,42 @@ export function registerIpc(db: DatabaseSync, paths: DataPaths, backupNow: () =>
   ipcMain.handle(IPC.articleFacets, (_e, text: string, filters: ArticleFilters) => articleFacets(db, text, filters))
   ipcMain.handle(IPC.getArticle, (_e, id: number) => getArticle(db, id))
 
+  ipcMain.handle(IPC.editorChoices, () => editorChoices(db))
+  ipcMain.handle(IPC.getArticleInput, (_e, id: number) => getArticleInput(db, id))
+  ipcMain.handle(IPC.saveArticle, (_e, input: ArticleInput) => saveArticle(db, input, undo))
+  ipcMain.handle(IPC.uploadImage, (_e, image: ImageUpload) => uploadImage(db, paths.root, image))
+  ipcMain.handle(IPC.downloadImage, (_e, url: string) => downloadImage(url))
+  ipcMain.handle(IPC.trashArticle, (_e, id: number) => trashArticle(db, id, undo))
+  ipcMain.handle(IPC.restoreArticle, (_e, id: number) => restoreArticle(db, id, undo))
+  ipcMain.handle(IPC.listTrash, () => listTrash(db))
+  ipcMain.handle(IPC.undo, (): UndoResult | null => {
+    const entry = undo.pop()
+    if (!entry) return null
+    entry.undo()
+    return { label: entry.label, articleId: entry.articleId }
+  })
+
+  // Boîte de confirmation native (feuille attachée à la fenêtre sur Mac).
+  ipcMain.handle(IPC.confirm, async (e, message: string, detail: string, action: string) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    const options = { type: 'warning' as const, message, detail, buttons: [action, 'Annuler'], defaultId: 0, cancelId: 1 }
+    const { response } = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options)
+    return response === 0
+  })
+
   // Seuls les liens web s'ouvrent, dans le navigateur par défaut.
   ipcMain.handle(IPC.openExternal, async (_e, url: string) => {
     if (/^https?:\/\//i.test(url)) await shell.openExternal(url)
   })
+}
+
+// Photo glissée depuis un site web : on récupère l'image à son adresse.
+async function downloadImage(url: string): Promise<DownloadedImage> {
+  if (!/^https?:\/\//i.test(url)) throw new Error("Cette adresse n'est pas une image du web.")
+  const response = await net.fetch(url)
+  const mimeType = response.headers.get('content-type')?.split(';')[0] ?? ''
+  if (!response.ok || !mimeType.startsWith('image/')) throw new Error("Impossible de récupérer cette image.")
+  const bytes = new Uint8Array(await response.arrayBuffer())
+  if (bytes.byteLength > MAX_DOWNLOAD_BYTES) throw new Error('Cette image est trop lourde.')
+  return { bytes, mimeType }
 }

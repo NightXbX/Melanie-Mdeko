@@ -1,8 +1,14 @@
-import { app, Menu, type MenuItemConstructorOptions } from 'electron'
+import { app, BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron'
+import { IPC, type MenuCommand } from '@shared/api'
 
 export interface MenuActions {
   backupNow(): void
   openDataFolder(): void
+}
+
+// Les commandes propres à l'appli sont transmises à l'interface, qui sait ce qui est à l'écran.
+function send(command: MenuCommand): void {
+  BrowserWindow.getFocusedWindow()?.webContents.send(IPC.menu, command)
 }
 
 // Menus natifs en français avec les raccourcis Mac habituels.
@@ -31,7 +37,8 @@ export function buildMenu(actions: MenuActions): void {
     {
       label: 'Fichier',
       submenu: [
-        { label: 'Nouveau projet', accelerator: 'CmdOrCtrl+N', enabled: false },
+        { label: 'Nouvel article', accelerator: 'CmdOrCtrl+N', click: () => send('new-article') },
+        { label: 'Nouveau projet', accelerator: 'Shift+CmdOrCtrl+N', enabled: false },
         sep,
         { label: 'Faire une sauvegarde maintenant', click: actions.backupNow },
         { label: 'Afficher le dossier des données', click: actions.openDataFolder },
@@ -43,7 +50,8 @@ export function buildMenu(actions: MenuActions): void {
     {
       label: 'Édition',
       submenu: [
-        { role: 'undo', label: 'Annuler' },
+        // Annule la frappe dans un champ, sinon la dernière action (ajout, modification, suppression).
+        { label: 'Annuler', accelerator: 'CmdOrCtrl+Z', click: () => send('undo') },
         { role: 'redo', label: 'Rétablir' },
         sep,
         { role: 'cut', label: 'Couper' },
@@ -62,11 +70,11 @@ export function buildMenu(actions: MenuActions): void {
         { role: 'togglefullscreen', label: 'Plein écran' },
         ...(app.isPackaged
           ? []
-          : [
+          : ([
               sep,
               { role: 'reload', label: 'Recharger' },
               { role: 'toggleDevTools', label: 'Outils de développement' }
-            ] as MenuItemConstructorOptions[])
+            ] as MenuItemConstructorOptions[]))
       ]
     },
     {

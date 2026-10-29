@@ -1,26 +1,50 @@
 import { useEffect, useState } from 'react'
 import type { ArticleDetail as Detail } from '@shared/api'
 import { formatPrice } from '@shared/format'
+import { useApp } from '../app-context'
 import { Icon } from './Icon'
 
 interface Props {
   id: number
   onClose(): void
+  onEdit(id: number): void
 }
 
 // Page détail d'un article, par-dessus la grille (Échap ou « Shopping list » pour revenir).
-export function ArticleDetail({ id, onClose }: Props) {
+export function ArticleDetail({ id, onClose, onEdit }: Props) {
+  const { dataVersion, refresh, notify } = useApp()
   const [article, setArticle] = useState<Detail | null>(null)
   const [photo, setPhoto] = useState(0)
 
   useEffect(() => {
-    let current = true
     setPhoto(0)
-    void window.mdeko.getArticle(id).then((a) => current && setArticle(a))
+  }, [id])
+
+  useEffect(() => {
+    let current = true
+    void window.mdeko.getArticle(id).then((a) => {
+      if (!current) return
+      if (a) setArticle(a)
+      else onClose() // article mis à la corbeille entre-temps
+    })
     return () => {
       current = false
     }
-  }, [id])
+  }, [id, dataVersion, onClose])
+
+  const remove = async () => {
+    if (!article) return
+    const ok = await window.mdeko.confirm(
+      `Mettre « ${article.name} » à la corbeille ?`,
+      'Vous pourrez le récupérer depuis la Corbeille.',
+      'Mettre à la corbeille'
+    )
+    if (!ok) return
+    await window.mdeko.trashArticle(article.id)
+    onClose()
+    refresh()
+    notify(`« ${article.name} » a été mis à la corbeille`, true)
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -47,6 +71,14 @@ export function ArticleDetail({ id, onClose }: Props) {
           <Icon name="chevronLeft" size={14} />
           Shopping list
         </button>
+        <div className="detail-actions">
+          <button type="button" className="button" onClick={() => onEdit(article.id)}>
+            Modifier
+          </button>
+          <button type="button" className="button button-icon" aria-label="Mettre à la corbeille" title="Mettre à la corbeille" onClick={() => void remove()}>
+            <Icon name="trash" size={16} />
+          </button>
+        </div>
       </div>
       <div className="detail-body">
         <div className="detail-photos">
@@ -97,16 +129,18 @@ export function ArticleDetail({ id, onClose }: Props) {
           )}
           {article.linkStatus === 'gone' && <p className="detail-warning">Ce lien ne semble plus fonctionner.</p>}
 
-          <dl className="detail-list">
-            {infos
-              .filter(([, value]) => value)
-              .map(([label, value]) => (
-                <div key={label}>
-                  <dt>{label}</dt>
-                  <dd>{value}</dd>
-                </div>
-              ))}
-          </dl>
+          {infos.some(([, value]) => value) && (
+            <dl className="detail-list">
+              {infos
+                .filter(([, value]) => value)
+                .map(([label, value]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))}
+            </dl>
+          )}
         </div>
       </div>
     </div>
