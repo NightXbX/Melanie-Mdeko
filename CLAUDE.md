@@ -17,7 +17,7 @@ Mac cible : **Mac fixe M1, 16 Go, macOS Tahoe 26.x** (26.2.2 déclaré ; un expo
 - **Electron + React + TypeScript**. Développement et tests sous Windows ; build macOS (Apple Silicon, arm64) via **GitHub Actions** sur un runner macOS. Le comportement propre au Mac se vérifie sur le Mac de Mélanie.
 - **SQLite intégré à Node** (`node:sqlite`, `DatabaseSync`) : aucun module natif à compiler. FTS5 est disponible et insensible aux accents (`unicode61 remove_diacritics 2`). **PptxGenJS** pour le PPTX, `webContents.printToPDF` pour le PDF, `sharp` pour les images (à ajouter).
 - Versions figées (`package.json` sans `^`), toujours publiées depuis au moins 2 semaines : Electron 44.7.2 (Node 24), electron-vite 6, electron-builder 26.17, Vite 8.3, React 19.3, TypeScript 7.0, Vitest 5.0.
-- Aspect natif : `titleBarStyle: 'hiddenInset'`, `vibrancy: 'sidebar'`, menus natifs avec raccourcis (⌘N, ⌘S, ⌘F, ⌘Z, ⌘⌫), `nativeTheme` pour le mode sombre, police système (`-apple-system`), glisser-déposer depuis le Finder.
+- Aspect natif : `titleBarStyle: 'hiddenInset'`, `vibrancy: 'sidebar'`, menus natifs avec raccourcis (⌘N, ⌘S, ⌘F, ⌘Z, ⌘⌫), **mode clair uniquement** (`nativeTheme.themeSource = 'light'`, choix de Mélanie), police système (`-apple-system`), glisser-déposer depuis le Finder.
 - Appli non signée pendant le test (Gatekeeper : autorisation unique dans Réglages › Confidentialité et sécurité). Pas de mise à jour automatique sans signature : on remplace l'appli à la main. La signature (Apple Developer, 99 $/an) est envisagée après le test.
 - Identifiants (code, base de données) en anglais ; textes d'interface et commentaires en français.
 
@@ -82,7 +82,8 @@ HomeByMe, toujours en **4K 16:9** (3840 × 2160). L'original est toujours conser
 
 - Source : `ressources/Design book SHOPPINGLIST.pdf` (1 385 pages, environ 4 060 articles, 4 024 images, 3 194 URL uniques, environ 70 sections, plus de 60 fournisseurs). Les URL complètes se lisent dans les annotations de lien, pas dans le texte (qui est coupé).
 - Tout migrer **sauf les doublons** : comparaison de l'URL nettoyée, d'une empreinte d'image et du couple nom + prix. Les cas ambigus sont soumis à validation, jamais supprimés automatiquement.
-- Environ 70 sections → **grandes familles** + sous-catégories : Assises, Tables & bureaux, Rangements, Luminaires, Textiles, Décoration, Murs & sols, Salle de bain, Cuisine & électroménager, Extérieur.
+- Environ 70 sections → **11 grandes familles** + sous-catégories : Assises, Tables & bureaux, Rangements, Chambre (ajoutée pour la section LITERIE : lits, têtes de lit, matelas), Luminaires, Textiles, Décoration, Murs & sols, Salle de bain, Cuisine & électroménager, Extérieur.
+- Outil : `tools/migration/` (Python + PyMuPDF, voir son README). Il produit un dossier de données complet, à copier tel quel sur le Mac lors de l'installation. Environ 22 % des lignes du PDF sont des copies du même article : elles sont fusionnées, et seule la première est gardée.
 - Les pages qui ne sont pas des articles (plans, configurations IKEA, nuanciers, planches d'ambiance) vont dans **Inspirations**.
 - **Vérification des liens** : statut en ligne / disparu / non vérifiable ; un lien disparu est **signalé**, pas archivé (le développeur vérifie à la main au début). **Les prix trouvés sont mis à jour automatiquement**, avec un historique des prix.
 - Analyse : Python 3.12 dans `%LOCALAPPDATA%\Programs\Python\Python312` (PyMuPDF, pdfplumber, python-pptx, Pillow). Lancer avec `-I`.

@@ -20,6 +20,7 @@ dist/
 release/
 *.log
 *.tsbuildinfo
+__pycache__/
 
 # Système
 .DS_Store

@@ -40,6 +40,7 @@ CREATE TABLE articles (
   price_cents      INTEGER,
   price_kind       TEXT NOT NULL DEFAULT 'fixed'
                    CHECK (price_kind IN ('fixed', 'from', 'per_m2', 'per_roll', 'on_quote', 'unknown')),
+  price_text       TEXT,
   url              TEXT,
   url_clean        TEXT,
   dimensions       TEXT,
@@ -233,10 +234,11 @@ INSERT INTO families (name, sort) VALUES
   ('Assises', 1),
   ('Tables & bureaux', 2),
   ('Rangements', 3),
-  ('Luminaires', 4),
-  ('Textiles', 5),
-  ('Décoration', 6),
-  ('Murs & sols', 7),
-  ('Salle de bain', 8),
-  ('Cuisine & électroménager', 9),
-  ('Extérieur', 10);
+  ('Chambre', 4),
+  ('Luminaires', 5),
+  ('Textiles', 6),
+  ('Décoration', 7),
+  ('Murs & sols', 8),
+  ('Salle de bain', 9),
+  ('Cuisine & électroménager', 10),
+  ('Extérieur', 11);

@@ -1,4 +1,5 @@
-/* Apparence inspirée de macOS : police système, couleurs sémantiques, mode clair et sombre. */
+/* Apparence inspirée de macOS : police système, couleurs sémantiques.
+   L'appli est forcée en mode clair (nativeTheme.themeSource) ; le bloc sombre reste prêt si besoin. */
 
 :root {
   --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;

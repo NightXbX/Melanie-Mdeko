@@ -7,7 +7,7 @@ describe('migrations', () => {
     const version = migrate(db)
     expect(version).toBe(MIGRATIONS.at(-1)!.version)
     const families = db.prepare('SELECT count(*) AS n FROM families').get() as { n: number }
-    expect(families.n).toBe(10)
+    expect(families.n).toBe(11)
   })
 
   it('ne rejoue pas une migration déjà appliquée', () => {

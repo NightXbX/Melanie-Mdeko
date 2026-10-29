@@ -14,6 +14,8 @@ let paths: DataPaths
 let mainWindow: BrowserWindow | null = null
 
 app.commandLine.appendSwitch('lang', 'fr')
+// Mélanie travaille en mode clair, quel que soit le réglage du Mac.
+nativeTheme.themeSource = 'light'
 
 // Une seule instance : deux fenêtres qui écrivent dans la même base, c'est le risque de conflit.
 if (!app.requestSingleInstanceLock()) {
@@ -106,7 +108,7 @@ function createWindow(): void {
           visualEffectState: 'followWindow',
           backgroundColor: '#00000000'
         }
-      : { backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#ffffff' }),
+      : { backgroundColor: '#ffffff' }),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,

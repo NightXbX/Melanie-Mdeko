@@ -25,7 +25,7 @@ describe('sauvegardes', () => {
     const file = createBackup(freshDb(), dir, 'manuelle')
     const copy = openDatabase(file)
     const row = copy.prepare('SELECT count(*) AS n FROM families').get() as { n: number }
-    expect(row.n).toBe(10)
+    expect(row.n).toBe(11)
     copy.close()
   })
 
