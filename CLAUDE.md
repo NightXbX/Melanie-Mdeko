@@ -36,16 +36,23 @@ Mac cible : **Mac fixe M1, 16 Go, macOS Tahoe 26.x** (26.2.2 déclaré ; un expo
 
 - `src/main/book/` : `charte.ts` (mesures relevées sur ses PDF, en mm), `layout.ts` (pages = éléments positionnés : textes, images, formes, liens ; sommaire calculé), `html.ts` (aperçu et PDF, Poppins intégrée via @fontsource), `pptx.ts` (PptxGenJS : chaque élément est natif et modifiable), `data.ts` (assemblage depuis la base), `export.ts` (PDF imprimé par Chromium, boîte d'enregistrement, dernier dossier mémorisé).
 - **Une seule mise en page pour les deux formats** : modifier `layout.ts` change le PDF et le PPTX à l'identique.
-- Shopping list modernisée : une page par besoin (« Mon choix » en grand + 3 alternatives max, « Voir le produit › » cliquable), puis une page « Récapitulatif de mes choix » avec le total (hors prix au m², au rouleau ou sur devis).
+- Shopping list modernisée : une page par besoin (« Mon choix » en grand + 3 propositions, les suivantes sur des pages « suite » de 8 ; nombre illimité), « Voir le produit › » cliquable, puis une page « Récapitulatif de mes choix » avec le total (hors prix au m², au rouleau ou sur devis).
+- **Trois styles** au choix par projet (`projects.book_theme`) : Classique (le sien), Épuré, Contemporain. Même police, sobres, sans aplats (peu d'encre) ; rendus 3D toujours pleine largeur. Intercalaires **horizontaux et numérotés** (les titres verticaux étaient illisibles).
+- **Aperçu modifiable** (`BookPreview.tsx`, mêmes pages que le PDF rendues en React) : clic sur un texte (avant-propos, envies, fin, titre de besoin, légende de rendu) pour le changer ; double-clic sur une page pour poser une annotation (`book_notes`), déplaçable par sa poignée. Les textes à saisir vides (`placeholder`) ne sont pas exportés.
+- Modèle de page partagé : `src/shared/book.ts` (éléments en mm, clés d'édition, clés de page).
 - Alternatives automatiques : même sous-catégorie, prix le plus proche, avec photo de préférence, sans doublon de lien.
 - Réglages (⌘,) : coordonnées, QR code d'avis, textes modèles (`{pieces}` = pièces du projet).
+
+## Dossiers de Mélanie
+
+`~/Documents/Melanie Mdeko/` ne montre que **Projets/AAAA/<client>/** (design books exportés automatiquement, datés, jamais écrasés) et **Fichiers de l’application/** (base, images, sauvegardes). Une ancienne organisation est rangée automatiquement au démarrage (`paths.ts`).
 
 ## Installation chez Mélanie (données)
 
 1. `python tools/migration/extraire_shopping_list.py "<shopping list>.pdf" <dossier neuf>`
 2. `python tools/migration/completer_photos.py <dossier>` (photos manquantes ; les sites qui refusent les accès automatiques ne sont pas contournés : liste dans `photos-non-recuperees.txt`).
 3. `python tools/migration/textes_par_defaut.py "<un design book>.pdf" <dossier>` (textes modèles, coordonnées, QR code).
-4. Copier le dossier dans `~/Documents/Melanie Mdeko/` sur son Mac.
+4. Copier le dossier produit dans `~/Documents/Melanie Mdeko/Fichiers de l’application/` sur son Mac.
 
 ## Dépôt public : données sensibles
 
@@ -61,7 +68,7 @@ Les coordonnées de Mélanie, le QR code « avis », les textes et les artisans 
 
 ## Données et sauvegarde
 
-- Dossier : `~/Documents/Melanie Mdeko/` → `mdeko.sqlite`, `images/` (chemins relatifs en base), `sauvegardes/`. Compatible Time Machine.
+- Dossier : `~/Documents/Melanie Mdeko/Fichiers de l’application/` → `mdeko.sqlite`, `images/` (chemins relatifs en base), `sauvegardes/`. Compatible Time Machine.
 - Copie automatique quotidienne de la base (`VACUUM INTO`, 30 copies conservées).
 - Menu « Fichier › Sauvegarder une copie… » : produit un `.zip` daté là où elle veut.
 - **Jamais la base sur iCloud Drive** (risque de corruption de SQLite).

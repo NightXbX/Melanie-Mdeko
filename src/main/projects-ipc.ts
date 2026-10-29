@@ -1,11 +1,12 @@
 import type { DatabaseSync } from 'node:sqlite'
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain, shell } from 'electron'
 import { IPC, PROJECT_METHODS, type ProjectsApi } from '@shared/api'
-import { exportBook, previewHtml } from './book/export'
+import { bookPages, exportBook, projectFolder } from './book/export'
+import type { DataPaths } from './paths'
 import * as p from './projects'
 
 // Implémentation côté processus principal de window.mdeko.projects.
-export function registerProjectsIpc(db: DatabaseSync, dataRoot: string): void {
+export function registerProjectsIpc(db: DatabaseSync, paths: DataPaths): void {
   const api: { [K in keyof ProjectsApi]: (sender: BrowserWindow | null, ...args: Parameters<ProjectsApi[K]>) => unknown } = {
     list: () => p.listProjects(db),
     create: (_w, title, name) => p.createProject(db, title, name),
@@ -29,8 +30,15 @@ export function registerProjectsIpc(db: DatabaseSync, dataRoot: string): void {
     setLinks: (_w, id, table, ids) => p.setProjectLinks(db, id, table === 'project_artisans' ? 'project_artisans' : 'project_paints', ids),
     getSettings: () => p.getSettings(db),
     saveSettings: (_w, settings) => p.saveSettings(db, settings),
-    preview: (_w, id) => previewHtml(db, dataRoot, id),
-    export: (w, id, format) => exportBook(db, dataRoot, id, format, w)
+    pages: (_w, id) => bookPages(db, paths, id),
+    editText: (_w, id, key, text) => p.editBookText(db, id, key, text),
+    addNote: (_w, id, pageKey, x, y) => p.addNote(db, id, pageKey, x, y),
+    moveNote: (_w, noteId, x, y) => p.moveNote(db, noteId, x, y),
+    deleteNote: (_w, noteId) => p.deleteNote(db, noteId),
+    export: (_w, id, format) => exportBook(db, paths, id, format),
+    openFolder: async (_w, id) => {
+      await shell.openPath(projectFolder(db, paths, id))
+    }
   }
 
   ipcMain.handle(IPC.projects, (e, method: string, ...args: unknown[]) => {

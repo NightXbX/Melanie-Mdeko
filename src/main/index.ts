@@ -55,10 +55,10 @@ function start(): void {
     return row?.rel_path ?? null
   })
   registerIpc(db, paths, backupNow)
-  registerProjectsIpc(db, paths.root)
+  registerProjectsIpc(db, paths)
   buildMenu({
     backupNow: () => backupNow(),
-    openDataFolder: () => void shell.openPath(paths.root)
+    openDataFolder: () => void shell.openPath(paths.home)
   })
   createWindow()
 

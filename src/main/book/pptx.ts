@@ -1,6 +1,7 @@
 import PptxGenJS from 'pptxgenjs'
 import { COLORS, FONT_FACES, PAGE } from './charte'
-import type { Element, Page } from './layout'
+import type { Element, Page } from '@shared/book'
+import { exported } from './html'
 
 const MM_PER_INCH = 25.4
 const inch = (mm: number) => mm / MM_PER_INCH
@@ -61,7 +62,7 @@ export async function bookPptx(pages: Page[], title: string): Promise<Buffer> {
   for (const page of pages) {
     const slide = pptx.addSlide()
     slide.background = { color: 'FFFFFF' }
-    for (const e of page.elements) addElement(pptx, slide, e)
+    for (const e of exported(page)) addElement(pptx, slide, e)
   }
   return (await pptx.write({ outputType: 'nodebuffer' })) as Buffer
 }

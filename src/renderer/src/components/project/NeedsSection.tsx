@@ -103,11 +103,9 @@ export function NeedsSection({ project, reload }: SectionProps) {
                   </div>
                 </div>
               ))}
-              {need.alternatives.length < 3 && (
-                <button type="button" className="button button-plain" onClick={() => setPicking({ mode: 'alternative', need })}>
-                  + Ajouter une proposition
-                </button>
-              )}
+              <button type="button" className="button button-plain" onClick={() => setPicking({ mode: 'alternative', need })}>
+                + Ajouter une proposition
+              </button>
             </div>
           </div>
         </div>

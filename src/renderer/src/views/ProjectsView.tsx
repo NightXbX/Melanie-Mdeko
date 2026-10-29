@@ -8,6 +8,16 @@ import { Toolbar } from '../components/Toolbar'
 const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
 const monthLabel = (d: string | null) => (d ? `${MONTHS[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}` : '')
 
+// Projets rangés par année du design book, la plus récente d'abord (comme le dossier Projets).
+function byYear(projects: ProjectSummary[]): [string, ProjectSummary[]][] {
+  const groups = new Map<string, ProjectSummary[]>()
+  for (const p of [...projects].sort((a, b) => (b.bookDate ?? '').localeCompare(a.bookDate ?? '') || b.updatedAt.localeCompare(a.updatedAt))) {
+    const year = p.bookDate?.slice(0, 4) ?? 'Sans date'
+    groups.set(year, [...(groups.get(year) ?? []), p])
+  }
+  return [...groups.entries()]
+}
+
 export function ProjectsView({ newProjectSignal }: { newProjectSignal: number }) {
   const { dataVersion } = useApp()
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null)
@@ -36,21 +46,30 @@ export function ProjectsView({ newProjectSignal }: { newProjectSignal: number })
         </button>
       </Toolbar>
       <div className="content-body">
-        <div className="projects-grid">
-          <button type="button" className="project-card project-new" onClick={() => setCreating(true)}>
-            <div className="project-cover">
-              <Icon name="plus" size={36} />
-            </div>
-            <span className="project-title">Nouveau projet</span>
-          </button>
-          {projects?.map((p) => (
-            <button key={p.id} type="button" className="project-card" onClick={() => setOpenId(p.id)}>
-              <div className="project-cover">{p.coverUrl ? <img src={p.coverUrl} alt="" /> : <Icon name="folder" size={36} />}</div>
-              <span className="project-title">{p.title}</span>
-              <span className="project-date">{monthLabel(p.bookDate)}</span>
+        {projects?.length === 0 && (
+          <div className="projects-grid">
+            <button type="button" className="project-card project-new" onClick={() => setCreating(true)}>
+              <div className="project-cover">
+                <Icon name="plus" size={36} />
+              </div>
+              <span className="project-title">Nouveau projet</span>
             </button>
-          ))}
-        </div>
+          </div>
+        )}
+        {byYear(projects ?? []).map(([year, list]) => (
+          <section key={year} className="projects-year">
+            <h2>{year}</h2>
+            <div className="projects-grid">
+              {list.map((p) => (
+                <button key={p.id} type="button" className="project-card" onClick={() => setOpenId(p.id)}>
+                  <div className="project-cover">{p.coverUrl ? <img src={p.coverUrl} alt="" /> : <Icon name="folder" size={36} />}</div>
+                  <span className="project-title">{p.title}</span>
+                  <span className="project-date">{monthLabel(p.bookDate)}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        ))}
       </div>
       {creating && (
         <NewProjectSheet

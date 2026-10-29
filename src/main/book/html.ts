@@ -7,7 +7,7 @@ import ext300 from '@fontsource/poppins/files/poppins-latin-ext-300-normal.woff2
 import ext400 from '@fontsource/poppins/files/poppins-latin-ext-400-normal.woff2?inline'
 import ext500 from '@fontsource/poppins/files/poppins-latin-ext-500-normal.woff2?inline'
 import { COLORS, PAGE } from './charte'
-import type { Element, Page, Run } from './layout'
+import type { Element, Page, Run } from '@shared/book'
 
 // Plages Unicode de Fontsource : latin (dont œ, €) et latin étendu.
 const LATIN =
@@ -71,9 +71,13 @@ function element(e: Element): string {
   }
 }
 
+// Les textes vides proposés à la saisie (légende, annotation) n'apparaissent pas dans le book exporté.
+export function exported(page: Page): Element[] {
+  return page.elements.filter((e) => e.type !== 'text' || !e.placeholder || e.runs.some((r) => r.text.trim()))
+}
+
 // Document HTML du book : pages A4 paysage, police Poppins intégrée.
-// `screen` ajoute la présentation d'aperçu (fond gris, pages espacées) ; sans lui, c'est la version PDF.
-export function bookHtml(pages: Page[], screen = false): string {
+export function bookHtml(pages: Page[]): string {
   const css = `${FONTS}
 @page{size:${PAGE.width}mm ${PAGE.height}mm;margin:0}
 *{box-sizing:border-box}
@@ -83,8 +87,7 @@ body{font-family:Poppins,sans-serif;-webkit-font-smoothing:antialiased}
 .el{position:absolute;margin:0}
 .text{display:flex;flex-direction:column;white-space:pre-wrap;overflow:hidden;transform-origin:center}
 .text a{color:inherit;text-decoration:underline;text-underline-offset:2px;text-decoration-thickness:0.5px}
-img.el{object-fit:contain}
-${screen ? `body{background:#e8e6e3;padding:24px 0}.page{margin:0 auto 24px;box-shadow:0 2px 12px rgba(0,0,0,.12)}a{pointer-events:none}` : ''}`
-  const body = pages.map((p) => `<section class="page">${p.elements.map(element).join('')}</section>`).join('\n')
+img.el{object-fit:contain}`
+  const body = pages.map((p) => `<section class="page">${exported(p).map(element).join('')}</section>`).join('\n')
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><style>${css}</style></head><body>${body}</body></html>`
 }

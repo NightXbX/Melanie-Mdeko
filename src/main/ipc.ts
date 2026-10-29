@@ -43,7 +43,7 @@ export function registerIpc(db: DatabaseSync, paths: DataPaths, backupNow: () =>
     }
   })
   ipcMain.handle(IPC.openDataFolder, async () => {
-    await shell.openPath(paths.root)
+    await shell.openPath(paths.home)
   })
   ipcMain.handle(IPC.backupNow, () => backupNow())
 

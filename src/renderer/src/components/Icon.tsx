@@ -9,7 +9,8 @@ const PATHS = {
   chevronLeft: 'M15 6l-6 6 6 6',
   chevronRight: 'M9 6l6 6-6 6',
   external: 'M14 5h5v5M19 5l-8 8M18 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4',
-  photo: 'M4 6h16v12H4zM4 15l4-4 4 4 3-3 5 5M15 9.5h.01'
+  photo: 'M4 6h16v12H4zM4 15l4-4 4 4 3-3 5 5M15 9.5h.01',
+  move: 'M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3'
 } as const
 
 export type IconName = keyof typeof PATHS

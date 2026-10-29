@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { THEMES, type ThemeId } from '@shared/book'
 import type { BookFormat, DesignerSettings, Project } from '@shared/projects'
 import { useApp } from '../../app-context'
 import { Icon } from '../Icon'
@@ -21,6 +22,7 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
   const [settings, setSettings] = useState<DesignerSettings | null>(null)
   const [step, setStep] = useState<Step>('client')
   const [preview, setPreview] = useState(false)
+  const [previewOnly, setPreviewOnly] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const reload = useCallback(async () => {
@@ -39,7 +41,9 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
     notify('Création du design book…')
     try {
       const file = await window.mdeko.projects.export(projectId, format)
-      notify(file ? 'Design book enregistré' : 'Export annulé')
+      // Projets › 2026 › Mme Durand : on montre où le fichier a été rangé.
+      const where = file.split(/[\/]/).slice(-4, -1).join(' › ')
+      notify(`Design book enregistré dans ${where}`)
     } catch (e) {
       notify(`Le design book n’a pas pu être créé : ${(e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`)
     } finally {
@@ -69,8 +73,40 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
         </button>
         <h1 className="toolbar-title">{title}</h1>
         <div className="toolbar-items">
-          <button type="button" className={`button${preview ? ' is-active' : ''}`} onClick={() => setPreview(!preview)}>
+          <label className="theme-select">
+            Style
+            <select
+              value={project.bookTheme}
+              onChange={async (e) => {
+                await window.mdeko.projects.update(projectId, { bookTheme: e.target.value as ThemeId })
+                await reload()
+              }}
+            >
+              {THEMES.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className={`button${preview ? ' is-active' : ''}`}
+            onClick={() => {
+              setPreview(!preview)
+              setPreviewOnly(false)
+            }}
+          >
             {preview ? 'Fermer l’aperçu' : 'Aperçu'}
+          </button>
+          {preview && (
+            <button type="button" className="button" onClick={() => setPreviewOnly(!previewOnly)}>
+              {previewOnly ? 'Réduire l’aperçu' : 'Agrandir l’aperçu'}
+            </button>
+          )}
+          <button type="button" className="button" title="Ouvrir le dossier du projet" onClick={() => void window.mdeko.projects.openFolder(projectId)}>
+            <Icon name="folder" size={14} />
+            Dossier
           </button>
           <div className="segmented">
             <span>Exporter</span>
@@ -84,7 +120,7 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
         </div>
       </header>
 
-      <div className="project">
+      <div className={`project${previewOnly ? ' is-preview-only' : ''}`}>
         <nav className="project-steps">
           {steps.map((s) => (
             <button
@@ -107,7 +143,7 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
           {step === 'artisans' && <ArtisansSection {...props} />}
           {step === 'texts' && <TextsSection {...props} />}
         </div>
-        {preview && <BookPreview projectId={projectId} version={project} />}
+        {preview && <BookPreview projectId={projectId} version={project} onChanged={() => void reload()} />}
       </div>
     </>
   )

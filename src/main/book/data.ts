@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import type { ArticleCard } from '@shared/api'
 import { formatPrice } from '@shared/format'
-import { getProject, getSettings, listArtisans, listPaints, projectTitle, wishesText } from '../projects'
+import { getProject, getSettings, listArtisans, listNotes, listPaints, projectTitle, wishesText } from '../projects'
 import type { BookArticle, BookData, ImageRef } from './layout'
 
 const MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
@@ -62,6 +62,7 @@ export function bookData(db: DatabaseSync, dataRoot: string, projectId: number):
   const artisansById = new Map(listArtisans(db).map((a) => [a.id, a]))
 
   return {
+    theme: project.bookTheme,
     clientLabel: projectTitle(project.clientTitle, project.clientName),
     dateLabel: dateLabel(project.bookDate),
     designerName: settings.designerName,
@@ -75,12 +76,15 @@ export function bookData(db: DatabaseSync, dataRoot: string, projectId: number):
     renders: project.renders.map((r) => {
       const inset = db.prepare('SELECT inset_image_id FROM renders WHERE id = ?').get(r.id) as { inset_image_id: number | null }
       return {
+        id: r.id,
+        caption: r.caption,
         image: imageRef(db, dataRoot, 'id', r.imageId)!,
         inset: inset.inset_image_id ? imageRef(db, dataRoot, 'id', inset.inset_image_id) : null,
         section: r.section
       }
     }),
     needs: project.needs.map((n) => ({
+      id: n.id,
       title: n.label ?? n.category ?? 'Shopping list',
       choice: n.choice ? bookArticle(db, dataRoot, n.choice) : null,
       alternatives: n.alternatives.map((a) => bookArticle(db, dataRoot, a))
@@ -89,6 +93,7 @@ export function bookData(db: DatabaseSync, dataRoot: string, projectId: number):
     artisans: project.artisanIds
       .map((id) => artisansById.get(id))
       .filter((a) => a !== undefined)
-      .map((a) => ({ trade: a.trade, name: a.name, city: a.city, phone: a.phone }))
+      .map((a) => ({ trade: a.trade, name: a.name, city: a.city, phone: a.phone })),
+    notes: listNotes(db, projectId)
   }
 }

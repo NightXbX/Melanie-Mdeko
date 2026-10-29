@@ -11,6 +11,7 @@ import type {
   ProjectSummary,
   RenderSection
 } from '@shared/projects'
+import { THEMES, type ThemeId } from '@shared/book'
 import { CARD_COLUMNS, toCard } from './articles'
 import { mediaUrl, thumbnailUrl } from './media-urls'
 
@@ -60,6 +61,7 @@ export function updateProject(db: DatabaseSync, id: number, patch: ProjectPatch)
   if (patch.phone !== undefined) columns.push(['phone', patch.phone || null])
   if (patch.email !== undefined) columns.push(['email', patch.email || null])
   if (patch.bookDate !== undefined) columns.push(['book_date', patch.bookDate])
+  if (patch.bookTheme !== undefined && THEMES.some((t) => t.id === patch.bookTheme)) columns.push(['book_theme', patch.bookTheme])
   if (patch.texts) {
     columns.push(['intro_text', patch.texts.intro], ['wishes_text', patch.texts.wishes], ['closing_text', patch.texts.closing])
   }
@@ -91,6 +93,7 @@ export function getProject(db: DatabaseSync, id: number): Project | null {
     phone: (p.phone as string | null) ?? '',
     email: (p.email as string | null) ?? '',
     bookDate: p.book_date as string | null,
+    bookTheme: p.book_theme as ThemeId,
     rooms,
     texts: {
       intro: p.intro_text as string | null,
@@ -118,7 +121,7 @@ export function setRooms(db: DatabaseSync, projectId: number, names: string[]): 
 function getRenders(db: DatabaseSync, projectId: number): ProjectRender[] {
   const rows = db
     .prepare(
-      `SELECT r.id, r.section, r.image_id, i.rel_path, i.sha256, ins.rel_path AS inset
+      `SELECT r.id, r.section, r.caption, r.image_id, i.rel_path, i.sha256, ins.rel_path AS inset
        FROM renders r JOIN images i ON i.id = r.image_id LEFT JOIN images ins ON ins.id = r.inset_image_id
        WHERE r.project_id = ? ORDER BY r.sort, r.id`
     )
@@ -129,7 +132,8 @@ function getRenders(db: DatabaseSync, projectId: number): ProjectRender[] {
     imageUrl: mediaUrl(r.rel_path as string),
     thumbnailUrl: thumbnailUrl(r.sha256 as string),
     insetUrl: r.inset ? mediaUrl(r.inset as string) : null,
-    section: r.section as RenderSection
+    section: r.section as RenderSection,
+    caption: r.caption as string | null
   }))
 }
 
@@ -146,8 +150,9 @@ export function addRenders(db: DatabaseSync, projectId: number, imageIds: number
 export function updateRender(
   db: DatabaseSync,
   renderId: number,
-  patch: { section?: RenderSection; insetImageId?: number | null }
+  patch: { section?: RenderSection; insetImageId?: number | null; caption?: string | null }
 ): void {
+  if (patch.caption !== undefined) db.prepare('UPDATE renders SET caption = ? WHERE id = ?').run(patch.caption?.trim() || null, renderId)
   if (patch.section) db.prepare('UPDATE renders SET section = ? WHERE id = ?').run(patch.section, renderId)
   if (patch.insetImageId !== undefined) db.prepare('UPDATE renders SET inset_image_id = ? WHERE id = ?').run(patch.insetImageId, renderId)
 }
@@ -367,4 +372,53 @@ export function wishesText(project: Project, settings: DesignerSettings): string
   const names = project.rooms.map((r) => r.name.toLowerCase())
   const pieces = names.length > 1 ? `${names.slice(0, -1).join(', ')} et ${names.at(-1)}` : (names[0] ?? '')
   return settings.wishesText.replaceAll('{pieces}', pieces)
+}
+
+// --- Modifications faites directement dans l'aperçu du book ------------------------------------------
+
+// Texte modifié dans l'aperçu : la clé indique ce qu'il faut mettre à jour (voir EditKey).
+export function editBookText(db: DatabaseSync, projectId: number, key: string, value: string): void {
+  const [kind, rawId] = key.split(':')
+  const id = Number(rawId)
+  const text = value.replace(/ /g, ' ').replace(/\s+$/, '')
+  if (kind === 'intro' || kind === 'wishes' || kind === 'closing') {
+    const project = getProject(db, projectId)
+    if (project) updateProject(db, projectId, { texts: { ...project.texts, [kind]: text } })
+  } else if (kind === 'caption') {
+    db.prepare('UPDATE renders SET caption = ? WHERE id = ? AND project_id = ?').run(text.trim() || null, id, projectId)
+  } else if (kind === 'needLabel') {
+    db.prepare('UPDATE needs SET label = ? WHERE id = ? AND project_id = ?').run(text.trim() || null, id, projectId)
+  } else if (kind === 'note') {
+    // Une annotation vidée disparaît.
+    if (text.trim()) db.prepare('UPDATE book_notes SET text = ? WHERE id = ? AND project_id = ?').run(text, id, projectId)
+    else db.prepare('DELETE FROM book_notes WHERE id = ? AND project_id = ?').run(id, projectId)
+  }
+  touch(db, projectId)
+}
+
+export function addNote(db: DatabaseSync, projectId: number, pageKey: string, x: number, y: number): number {
+  return Number(
+    db
+      .prepare('INSERT INTO book_notes (project_id, page_key, x, y) VALUES (?, ?, ?, ?)')
+      .run(projectId, pageKey, Math.max(0, Math.min(x, 200)), Math.max(0, Math.min(y, 195))).lastInsertRowid
+  )
+}
+
+export function moveNote(db: DatabaseSync, noteId: number, x: number, y: number): void {
+  db.prepare('UPDATE book_notes SET x = ?, y = ? WHERE id = ?').run(Math.max(0, Math.min(x, 280)), Math.max(0, Math.min(y, 203)), noteId)
+}
+
+export function deleteNote(db: DatabaseSync, noteId: number): void {
+  db.prepare('DELETE FROM book_notes WHERE id = ?').run(noteId)
+}
+
+export function listNotes(db: DatabaseSync, projectId: number) {
+  return (db.prepare('SELECT id, page_key, x, y, w, text FROM book_notes WHERE project_id = ? ORDER BY id').all(projectId) as Row[]).map((r) => ({
+    id: r.id as number,
+    pageKey: r.page_key as string,
+    x: r.x as number,
+    y: r.y as number,
+    w: r.w as number,
+    text: r.text as string
+  }))
 }

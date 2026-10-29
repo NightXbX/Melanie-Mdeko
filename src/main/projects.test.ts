@@ -3,6 +3,10 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { migrate, openDatabase } from './db/database'
 import {
   addNeed,
+  addNote,
+  editBookText,
+  listNotes,
+  moveNote,
   createPaint,
   createProject,
   getProject,
@@ -88,5 +92,38 @@ describe('teintes et artisans', () => {
     expect(listPaints(db).map((p) => p.name)).toEqual(['Marelle'])
     expect(getProject(db, id)!.paintIds).toEqual([paint])
     expect(getProject(db, id)!.artisanIds).toEqual([artisan])
+  })
+})
+
+describe('modifications dans l’aperçu', () => {
+  it('met à jour textes, légendes, titres de besoin et annotations', () => {
+    const id = createProject(db, 'Mme', 'Durand')
+    db.exec("INSERT INTO images (id, rel_path) VALUES (1, 'a.jpg')")
+    db.prepare("INSERT INTO renders (id, project_id, image_id) VALUES (1, ?, 1)").run(id)
+    const needId = addNeed(db, id, 1)
+
+    editBookText(db, id, 'intro', 'Nouvel avant-propos  ')
+    editBookText(db, id, 'caption:1', 'Vue depuis l’entrée')
+    editBookText(db, id, `needLabel:${needId}`, 'Fauteuils du salon')
+    const p = getProject(db, id)!
+    expect(p.texts.intro).toBe('Nouvel avant-propos')
+    expect(p.renders[0].caption).toBe('Vue depuis l’entrée')
+    expect(p.needs[0].label).toBe('Fauteuils du salon')
+
+    const noteId = addNote(db, id, 'render:1', 40, 180)
+    editBookText(db, id, `note:${noteId}`, 'Banquette sur mesure')
+    moveNote(db, noteId, 60, 185)
+    expect(listNotes(db, id)).toEqual([{ id: noteId, pageKey: 'render:1', x: 60, y: 185, w: 90, text: 'Banquette sur mesure' }])
+    // Une annotation vidée disparaît.
+    editBookText(db, id, `note:${noteId}`, '  ')
+    expect(listNotes(db, id)).toEqual([])
+  })
+
+  it('enregistre le style du book choisi et ignore un style inconnu', () => {
+    const id = createProject(db, '', 'Durand')
+    updateProject(db, id, { bookTheme: 'epure' })
+    expect(getProject(db, id)!.bookTheme).toBe('epure')
+    updateProject(db, id, { bookTheme: 'inconnu' as never })
+    expect(getProject(db, id)!.bookTheme).toBe('epure')
   })
 })

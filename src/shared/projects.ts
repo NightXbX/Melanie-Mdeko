@@ -1,4 +1,5 @@
 import type { ArticleCard } from './api'
+import type { ThemeId } from './book'
 
 // Types des projets et du design book, partagés entre le processus principal et l'interface.
 
@@ -24,6 +25,7 @@ export interface ProjectRender {
   thumbnailUrl: string
   insetUrl: string | null
   section: RenderSection
+  caption: string | null
 }
 
 export interface ProjectNeed {
@@ -66,6 +68,7 @@ export interface Project {
   phone: string
   email: string
   bookDate: string | null
+  bookTheme: ThemeId
   rooms: Room[]
   texts: ProjectTexts
   renders: ProjectRender[]
@@ -75,7 +78,7 @@ export interface Project {
 }
 
 export type ProjectPatch = Partial<
-  Pick<Project, 'clientTitle' | 'clientName' | 'address' | 'phone' | 'email' | 'bookDate'> & { texts: ProjectTexts }
+  Pick<Project, 'clientTitle' | 'clientName' | 'address' | 'phone' | 'email' | 'bookDate' | 'bookTheme'> & { texts: ProjectTexts }
 >
 
 // Réglages de Mélanie : coordonnées et textes modèles (dans ses données, jamais dans le code).

@@ -1,18 +1,33 @@
-import { rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
-import { app, BrowserWindow, dialog, shell } from 'electron'
+import { app, BrowserWindow, shell } from 'electron'
+import type { Page } from '@shared/book'
 import type { BookFormat } from '@shared/projects'
+import type { DataPaths } from '../paths'
+import { getProject, projectTitle } from '../projects'
 import { bookData } from './data'
 import { bookHtml } from './html'
 import { buildBook } from './layout'
 import { bookPptx } from './pptx'
 
-export function previewHtml(db: DatabaseSync, dataRoot: string, projectId: number): string {
-  return bookHtml(buildBook(bookData(db, dataRoot, projectId)), true)
+export function bookPages(db: DatabaseSync, paths: DataPaths, projectId: number): Page[] {
+  return buildBook(bookData(db, paths.root, projectId))
 }
 
-// PDF : la même page HTML que l'aperçu, imprimée par Chromium (liens cliquables, police intégrée).
+const safeName = (s: string) => s.replace(/[\\/:*?"<>|]/g, '-').replace(/^[.\s]+|[.\s]+$/g, '') || 'Projet'
+
+// Projets/2026/Mme Durand : toujours au même endroit, rangé par année du design book.
+export function projectFolder(db: DatabaseSync, paths: DataPaths, projectId: number): string {
+  const p = getProject(db, projectId)
+  if (!p) throw new Error('Projet introuvable.')
+  const year = (p.bookDate ?? new Date().toISOString()).slice(0, 4)
+  const folder = join(paths.projects, year, safeName(projectTitle(p.clientTitle, p.clientName)))
+  mkdirSync(folder, { recursive: true })
+  return folder
+}
+
+// PDF : la même mise en page que l'aperçu, imprimée par Chromium (liens cliquables, police intégrée).
 async function renderPdf(html: string): Promise<Buffer> {
   const tmp = join(app.getPath('temp'), `mdeko-book-${Date.now()}.html`)
   writeFileSync(tmp, html)
@@ -33,31 +48,20 @@ async function renderPdf(html: string): Promise<Buffer> {
   }
 }
 
-// Demande où enregistrer, écrit le fichier et le montre dans le Finder. Renvoie le chemin, ou null si annulé.
-export async function exportBook(
-  db: DatabaseSync,
-  dataRoot: string,
-  projectId: number,
-  format: BookFormat,
-  parent: BrowserWindow | null
-): Promise<string | null> {
-  const data = bookData(db, dataRoot, projectId)
-  const lastDir = (db.prepare("SELECT value FROM settings WHERE key = 'export_dir'").get() as { value: string } | undefined)?.value
-  const name = `Design book ${data.clientLabel}.${format}`
-  const options = {
-    title: 'Enregistrer le design book',
-    defaultPath: join(lastDir ?? app.getPath('documents'), name),
-    filters: [format === 'pdf' ? { name: 'PDF', extensions: ['pdf'] } : { name: 'PowerPoint', extensions: ['pptx'] }]
-  }
-  const { canceled, filePath } = parent ? await dialog.showSaveDialog(parent, options) : await dialog.showSaveDialog(options)
-  if (canceled || !filePath) return null
-
+// Enregistre le book dans le dossier du projet, daté, sans jamais écraser un fichier existant
+// (Mélanie retouche parfois le PowerPoint), puis le montre dans le Finder.
+export async function exportBook(db: DatabaseSync, paths: DataPaths, projectId: number, format: BookFormat): Promise<string> {
+  const data = bookData(db, paths.root, projectId)
   const pages = buildBook(data)
   const content = format === 'pdf' ? await renderPdf(bookHtml(pages)) : await bookPptx(pages, `Design book ${data.clientLabel}`)
-  writeFileSync(filePath, content)
-  db.prepare("INSERT INTO settings (key, value) VALUES ('export_dir', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(
-    join(filePath, '..')
-  )
-  shell.showItemInFolder(filePath)
-  return filePath
+
+  const folder = projectFolder(db, paths, projectId)
+  const d = new Date()
+  const date = `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`
+  const base = safeName(`Design book ${data.clientLabel} (${date})`)
+  let file = join(folder, `${base}.${format}`)
+  for (let i = 2; existsSync(file); i++) file = join(folder, `${base} ${i}.${format}`)
+  writeFileSync(file, content)
+  shell.showItemInFolder(file)
+  return file
 }

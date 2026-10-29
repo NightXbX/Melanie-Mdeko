@@ -1,4 +1,5 @@
 // Contrat entre le processus principal et l'interface (exposé via le preload).
+import type { Page } from './book'
 import type {
   Artisan,
   BookFormat,
@@ -95,7 +96,7 @@ export interface ProjectsApi {
   restore(id: number): Promise<void>
   setRooms(id: number, names: string[]): Promise<void>
   addRenders(id: number, imageIds: number[], section: RenderSection): Promise<void>
-  updateRender(renderId: number, patch: { section?: RenderSection; insetImageId?: number | null }): Promise<void>
+  updateRender(renderId: number, patch: { section?: RenderSection; insetImageId?: number | null; caption?: string | null }): Promise<void>
   removeRender(renderId: number): Promise<void>
   reorder(table: 'renders' | 'needs', ids: number[]): Promise<void>
   addNeed(id: number, articleId: number): Promise<number>
@@ -109,8 +110,13 @@ export interface ProjectsApi {
   setLinks(id: number, table: 'project_paints' | 'project_artisans', ids: number[]): Promise<void>
   getSettings(): Promise<DesignerSettings>
   saveSettings(settings: Partial<Omit<DesignerSettings, 'reviewQrUrl'>> & { reviewQrImageId?: number }): Promise<void>
-  preview(id: number): Promise<string>
-  export(id: number, format: BookFormat): Promise<string | null>
+  pages(id: number): Promise<Page[]>
+  editText(id: number, key: string, text: string): Promise<void>
+  addNote(id: number, pageKey: string, x: number, y: number): Promise<number>
+  moveNote(noteId: number, x: number, y: number): Promise<void>
+  deleteNote(noteId: number): Promise<void>
+  export(id: number, format: BookFormat): Promise<string>
+  openFolder(id: number): Promise<void>
 }
 
 // --- Édition ---
@@ -218,5 +224,6 @@ export const IPC = {
 export const PROJECT_METHODS = [
   'list', 'create', 'get', 'update', 'trash', 'restore', 'setRooms', 'addRenders', 'updateRender', 'removeRender',
   'reorder', 'addNeed', 'setNeedChoice', 'setNeedAlternatives', 'removeNeed', 'listPaints', 'createPaint',
-  'listArtisans', 'saveArtisan', 'setLinks', 'getSettings', 'saveSettings', 'preview', 'export'
+  'listArtisans', 'saveArtisan', 'setLinks', 'getSettings', 'saveSettings', 'pages', 'editText', 'addNote', 'moveNote',
+  'deleteNote', 'export', 'openFolder'
 ] as const satisfies readonly (keyof ProjectsApi)[]
