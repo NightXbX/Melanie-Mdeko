@@ -8,6 +8,7 @@ et rapport-migration.html (cas à vérifier). Rien n'est jamais supprimé de l'a
 from __future__ import annotations
 
 import argparse
+import base64
 import collections
 import hashlib
 import html
@@ -423,7 +424,7 @@ def ecrire(db: sqlite3.Connection, articles, inspirations, teintes, img: Images,
         note = "\n".join(insp.liens[1:]) or None
         cur = db.execute(
             "INSERT INTO inspirations (title, note, category_id, url, source_page) VALUES (?, ?, ?, ?, ?)",
-            (f"{insp.section.strip().capitalize()} · page {insp.page}", note,
+            (" ".join(insp.section.split()).capitalize(), note,
              categorie_id(famille, sous) if regles.cle(insp.section) in regles.SECTIONS else None,
              insp.liens[0] if insp.liens else None, insp.page),
         )
@@ -459,10 +460,25 @@ def ecrire(db: sqlite3.Connection, articles, inspirations, teintes, img: Images,
 # --- Rapport --------------------------------------------------------------------------------------
 
 def rapport(chemin: Path, articles, a_verifier, inspirations, teintes, bilan, img: Images) -> None:
+    miniatures: dict[str, str] = {}
+
+    def miniature(res: dict) -> str:
+        """Miniature intégrée au fichier (data URI) : le rapport s'affiche partout, même copié ailleurs."""
+        if res["sha"] not in miniatures:
+            with Image.open(img.racine / res["rel"]) as im:
+                im = im.convert("RGBA")
+                im.thumbnail((340, 260))
+                fond = Image.new("RGB", im.size, "white")
+                fond.paste(im, mask=im.split()[3])
+                tampon = io.BytesIO()
+                fond.save(tampon, "JPEG", quality=70)
+            miniatures[res["sha"]] = "data:image/jpeg;base64," + base64.b64encode(tampon.getvalue()).decode()
+        return miniatures[res["sha"]]
+
     def vignette(a: Article) -> str:
         res = next((img.extraire(x) for x in a.images if img.extraire(x)), None)
-        src = html.escape(res["rel"]) if res else ""
-        return (f'<figure><img src="{src}" loading="lazy"><figcaption>p.{a.page} · {html.escape(a.nom)}<br>'
+        visuel = f'<img src="{miniature(res)}" loading="lazy">' if res else '<div class=vide>Pas de photo</div>'
+        return (f'<figure>{visuel}<figcaption>{html.escape(a.nom)}<br>'
                 f'{html.escape(a.prix.texte)} · {html.escape(a.fournisseur_brut)}</figcaption></figure>')
 
     def section(titre: str, lignes: list[str]) -> str:
@@ -482,7 +498,8 @@ def rapport(chemin: Path, articles, a_verifier, inspirations, teintes, bilan, im
     corps = f"""<!doctype html><meta charset=utf-8><title>Rapport de migration</title>
 <style>body{{font:14px -apple-system,Segoe UI,sans-serif;margin:24px;color:#222}}
 .grille{{display:flex;flex-wrap:wrap;gap:10px}}figure{{width:170px;margin:0;font-size:11px}}
-figure img{{width:170px;height:130px;object-fit:contain;background:#f4f4f4}}
+figure img,.vide{{width:170px;height:130px;object-fit:contain;background:#f4f4f4}}
+.vide{{display:flex;align-items:center;justify-content:center;color:#999}}
 .paire{{display:flex;gap:10px;padding:8px;border:1px solid #ddd;border-radius:8px}}
 table{{border-collapse:collapse}}td{{padding:2px 10px;border-bottom:1px solid #eee}}</style>
 <h1>Rapport de migration de la shopping list</h1>
@@ -497,7 +514,7 @@ table{{border-collapse:collapse}}td{{padding:2px 10px;border-bottom:1px solid #e
 {section("Sans lien", [vignette(a) for a in sans_lien])}
 {section("Sans photo", [vignette(a) for a in sans_photo])}
 <h2>Teintes ({len(teintes)})</h2><p>{''.join(f'<span style="display:inline-block;margin:4px;padding:4px 8px;border-left:24px solid {t.hex or "#fff"}">{html.escape(t.marque)} · {html.escape(t.nom)} {html.escape(t.reference or "")}</span>' for t in teintes)}</p>
-<h2>Inspirations ({len(inspirations)})</h2><p>Pages : {', '.join(str(i.page) for i in inspirations)}</p>
+<h2>Inspirations ({len(inspirations)})</h2>
 """
     chemin.write_text(corps, encoding="utf-8")
 
