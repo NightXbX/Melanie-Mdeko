@@ -15,10 +15,20 @@ Mac cible : **Mac fixe M1, 16 Go, macOS Tahoe 26.x** (26.2.2 déclaré ; un expo
 ## Stack (décidée)
 
 - **Electron + React + TypeScript**. Développement et tests sous Windows ; build macOS (Apple Silicon, arm64) via **GitHub Actions** sur un runner macOS. Le comportement propre au Mac se vérifie sur le Mac de Mélanie.
-- **SQLite** via `better-sqlite3`, **PptxGenJS** pour le PPTX, `webContents.printToPDF` pour le PDF, `sharp` pour les images.
+- **SQLite intégré à Node** (`node:sqlite`, `DatabaseSync`) : aucun module natif à compiler. FTS5 est disponible et insensible aux accents (`unicode61 remove_diacritics 2`). **PptxGenJS** pour le PPTX, `webContents.printToPDF` pour le PDF, `sharp` pour les images (à ajouter).
+- Versions figées (`package.json` sans `^`), toujours publiées depuis au moins 2 semaines : Electron 44.7.2 (Node 24), electron-vite 6, electron-builder 26.17, Vite 8.3, React 19.3, TypeScript 7.0, Vitest 5.0.
 - Aspect natif : `titleBarStyle: 'hiddenInset'`, `vibrancy: 'sidebar'`, menus natifs avec raccourcis (⌘N, ⌘S, ⌘F, ⌘Z, ⌘⌫), `nativeTheme` pour le mode sombre, police système (`-apple-system`), glisser-déposer depuis le Finder.
 - Appli non signée pendant le test (Gatekeeper : autorisation unique dans Réglages › Confidentialité et sécurité). Pas de mise à jour automatique sans signature : on remplace l'appli à la main. La signature (Apple Developer, 99 $/an) est envisagée après le test.
 - Identifiants (code, base de données) en anglais ; textes d'interface et commentaires en français.
+
+## Commandes et organisation du code
+
+- `npm run dev` : appli en développement (données dans `./donnees`, ignoré par git) ; `npm test` ; `npm run typecheck` ; `npm run build`.
+- `src/main/` : processus principal (fenêtre, menus, base, sauvegardes, IPC). `src/main/db/migrations/NNN_nom.sql` est chargé automatiquement : ne jamais modifier une migration livrée, en ajouter une.
+- `src/preload/` : pont sécurisé (`window.mdeko`). `src/shared/api.ts` : contrat IPC commun. `src/renderer/` : interface React.
+- Fenêtre en `sandbox` + `contextIsolation`, aucun accès Node dans l'interface. Les liens web s'ouvrent dans le navigateur.
+- CI : `.github/workflows/build-mac.yml` (runner `macos-latest`) : typecheck, tests, build `.dmg` + `.zip` arm64, signature ad hoc vérifiée par `codesign`. Un tag `vX.Y.Z` crée une Release GitHub (source des mises à jour).
+- Sous Windows (PowerShell 5.1) : recharger le PATH avant `git`/`npm`/`gh`, et utiliser `git commit -F fichier` pour les messages accentués sur plusieurs lignes.
 
 ## Dépôt public : données sensibles
 
