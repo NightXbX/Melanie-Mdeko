@@ -6,6 +6,7 @@ export const PAGE = { width: 297, height: 210 }
 export const COLORS = {
   taupe: '#BFB6A3', // « m » du logo, « Design Book », titres de section
   taupeLight: '#CCC7B9', // filets, cadres
+  taupeDark: '#9C927E', // petites étiquettes : même teinte, assez foncée pour rester lisible
   disc: '#DCD5C8', // disque de la 4e de couverture
   text: '#1F1F1F',
   textSoft: '#6B6660',
@@ -29,7 +30,7 @@ export const FOOTER = { right: 275, y: 193, height: 8, size: 12 }
 
 export const SECTION_TITLE = { size: 47, right: 284, bottom: 202, length: 190, thickness: 20 }
 
-export const TEXT_BLOCK = { x: 40, y: 34, width: 212, height: 150, size: 16, lineHeight: 1.75 }
+export const TEXT_BLOCK = { x: 40, y: 34, width: 212, height: 128, size: 16, lineHeight: 1.75 }
 
 export const RENDER = { x: 8.5, y: 3, width: 280, height: 157.5, insetY: 163, insetHeight: 28 }
 

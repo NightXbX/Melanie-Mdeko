@@ -25,6 +25,8 @@ export function buildMenu(actions: MenuActions): void {
             submenu: [
               { role: 'about', label: `À propos de ${name}` },
               sep,
+              { label: 'Réglages…', accelerator: 'CmdOrCtrl+,', click: () => send('settings') },
+              sep,
               { role: 'hide', label: `Masquer ${name}` },
               { role: 'hideOthers', label: 'Masquer les autres' },
               { role: 'unhide', label: 'Tout afficher' },
@@ -38,8 +40,9 @@ export function buildMenu(actions: MenuActions): void {
       label: 'Fichier',
       submenu: [
         { label: 'Nouvel article', accelerator: 'CmdOrCtrl+N', click: () => send('new-article') },
-        { label: 'Nouveau projet', accelerator: 'Shift+CmdOrCtrl+N', enabled: false },
+        { label: 'Nouveau projet', accelerator: 'Shift+CmdOrCtrl+N', click: () => send('new-project') },
         sep,
+        ...(isMac ? [] : [{ label: 'Réglages…', accelerator: 'Ctrl+,', click: () => send('settings') }, sep]),
         { label: 'Faire une sauvegarde maintenant', click: actions.backupNow },
         { label: 'Afficher le dossier des données', click: actions.openDataFolder },
         sep,

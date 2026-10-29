@@ -5,6 +5,7 @@ import { ensureSearchIndex } from './articles'
 import { createBackup, ensureDailyBackup } from './backup'
 import { migrate, openDatabase, pendingMigrations, schemaVersion } from './db/database'
 import { registerIpc } from './ipc'
+import { registerProjectsIpc } from './projects-ipc'
 import { handleMedia, registerMediaScheme } from './media'
 import { buildMenu } from './menu'
 import { resolveDataPaths, type DataPaths } from './paths'
@@ -54,6 +55,7 @@ function start(): void {
     return row?.rel_path ?? null
   })
   registerIpc(db, paths, backupNow)
+  registerProjectsIpc(db, paths.root)
   buildMenu({
     backupNow: () => backupNow(),
     openDataFolder: () => void shell.openPath(paths.root)

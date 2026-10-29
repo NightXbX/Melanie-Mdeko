@@ -32,6 +32,21 @@ Mac cible : **Mac fixe M1, 16 Go, macOS Tahoe 26.x** (26.2.2 déclaré ; un expo
 - CI : `.github/workflows/build-mac.yml` (runner `macos-latest`) : typecheck, tests, build `.dmg` + `.zip` arm64, signature ad hoc vérifiée par `codesign`. Un tag `vX.Y.Z` crée une Release GitHub (source des mises à jour).
 - Sous Windows (PowerShell 5.1) : recharger le PATH avant `git`/`npm`/`gh`, et utiliser `git commit -F fichier` pour les messages accentués sur plusieurs lignes.
 
+## Design book (implémenté)
+
+- `src/main/book/` : `charte.ts` (mesures relevées sur ses PDF, en mm), `layout.ts` (pages = éléments positionnés : textes, images, formes, liens ; sommaire calculé), `html.ts` (aperçu et PDF, Poppins intégrée via @fontsource), `pptx.ts` (PptxGenJS : chaque élément est natif et modifiable), `data.ts` (assemblage depuis la base), `export.ts` (PDF imprimé par Chromium, boîte d'enregistrement, dernier dossier mémorisé).
+- **Une seule mise en page pour les deux formats** : modifier `layout.ts` change le PDF et le PPTX à l'identique.
+- Shopping list modernisée : une page par besoin (« Mon choix » en grand + 3 alternatives max, « Voir le produit › » cliquable), puis une page « Récapitulatif de mes choix » avec le total (hors prix au m², au rouleau ou sur devis).
+- Alternatives automatiques : même sous-catégorie, prix le plus proche, avec photo de préférence, sans doublon de lien.
+- Réglages (⌘,) : coordonnées, QR code d'avis, textes modèles (`{pieces}` = pièces du projet).
+
+## Installation chez Mélanie (données)
+
+1. `python tools/migration/extraire_shopping_list.py "<shopping list>.pdf" <dossier neuf>`
+2. `python tools/migration/completer_photos.py <dossier>` (photos manquantes ; les sites qui refusent les accès automatiques ne sont pas contournés : liste dans `photos-non-recuperees.txt`).
+3. `python tools/migration/textes_par_defaut.py "<un design book>.pdf" <dossier>` (textes modèles, coordonnées, QR code).
+4. Copier le dossier dans `~/Documents/Melanie Mdeko/` sur son Mac.
+
 ## Dépôt public : données sensibles
 
 Le dépôt GitHub est **public**. Ne jamais y mettre :
@@ -39,6 +54,8 @@ Le dépôt GitHub est **public**. Ne jamais y mettre :
 - des noms de clients, l'adresse, le téléphone ou l'e-mail de Mélanie, les coordonnées des artisans, les codes promo ;
 - des clés d'API ou fichiers `.env` ;
 - des bases SQLite, des images de clients, des rendus ou des exports.
+
+Avant chaque commit, vérifier les ajouts avec les motifs de `ressources/mots-sensibles.txt` (non versionné) : `git diff --cached | grep -i -E -f ressources/mots-sensibles.txt` doit être vide. Ne jamais citer un vrai nom de client, même en exemple dans un commentaire (utiliser « Mme Durand »).
 
 Les coordonnées de Mélanie, le QR code « avis », les textes et les artisans vivent **dans ses données** (`settings` et tables), jamais dans le code. Les tests utilisent des données fictives. La clé OpenRouter est stockée sur son Mac via `safeStorage` (Trousseau macOS). Les commits utilisent l'e-mail `noreply` de GitHub. Avant chaque commit, vérifier `git status` et le contenu ajouté.
 

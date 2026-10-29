@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ArticleDetail as Detail } from '@shared/api'
 import { formatPrice } from '@shared/format'
+import type { ProjectSummary } from '@shared/projects'
 import { useApp } from '../app-context'
 import { Icon } from './Icon'
 
@@ -15,10 +16,15 @@ export function ArticleDetail({ id, onClose, onEdit }: Props) {
   const { dataVersion, refresh, notify } = useApp()
   const [article, setArticle] = useState<Detail | null>(null)
   const [photo, setPhoto] = useState(0)
+  const [projects, setProjects] = useState<ProjectSummary[]>([])
 
   useEffect(() => {
     setPhoto(0)
   }, [id])
+
+  useEffect(() => {
+    void window.mdeko.projects.list().then(setProjects)
+  }, [])
 
   useEffect(() => {
     let current = true
@@ -128,6 +134,29 @@ export function ArticleDetail({ id, onClose, onEdit }: Props) {
             </button>
           )}
           {article.linkStatus === 'gone' && <p className="detail-warning">Ce lien ne semble plus fonctionner.</p>}
+          {projects.length > 0 && (
+            <select
+              className="add-to-project"
+              value=""
+              onChange={(e) => {
+                const project = projects.find((p) => p.id === Number(e.target.value))
+                if (!project) return
+                void window.mdeko.projects.addNeed(project.id, article.id).then(() => {
+                  refresh()
+                  notify(`« ${article.name} » ajouté au projet ${project.title}`)
+                })
+              }}
+            >
+              <option value="" disabled>
+                Ajouter à un projet…
+              </option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.title}
+                </option>
+              ))}
+            </select>
+          )}
 
           {infos.some(([, value]) => value) && (
             <dl className="detail-list">

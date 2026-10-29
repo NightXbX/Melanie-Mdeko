@@ -1,4 +1,14 @@
 // Contrat entre le processus principal et l'interface (exposé via le preload).
+import type {
+  Artisan,
+  BookFormat,
+  DesignerSettings,
+  Paint,
+  Project,
+  ProjectPatch,
+  ProjectSummary,
+  RenderSection
+} from './projects'
 
 export interface AppInfo {
   version: string
@@ -74,6 +84,35 @@ export interface ArticleFacets {
   suppliers: FacetCount[]
 }
 
+// --- Projets ---
+
+export interface ProjectsApi {
+  list(): Promise<ProjectSummary[]>
+  create(clientTitle: string, clientName: string): Promise<number>
+  get(id: number): Promise<Project | null>
+  update(id: number, patch: ProjectPatch): Promise<void>
+  trash(id: number): Promise<void>
+  restore(id: number): Promise<void>
+  setRooms(id: number, names: string[]): Promise<void>
+  addRenders(id: number, imageIds: number[], section: RenderSection): Promise<void>
+  updateRender(renderId: number, patch: { section?: RenderSection; insetImageId?: number | null }): Promise<void>
+  removeRender(renderId: number): Promise<void>
+  reorder(table: 'renders' | 'needs', ids: number[]): Promise<void>
+  addNeed(id: number, articleId: number): Promise<number>
+  setNeedChoice(needId: number, articleId: number): Promise<void>
+  setNeedAlternatives(needId: number, articleIds: number[]): Promise<void>
+  removeNeed(needId: number): Promise<void>
+  listPaints(): Promise<Paint[]>
+  createPaint(paint: Omit<Paint, 'id' | 'promoCode'>): Promise<number>
+  listArtisans(): Promise<Artisan[]>
+  saveArtisan(artisan: Omit<Artisan, 'id'> & { id: number | null }): Promise<number>
+  setLinks(id: number, table: 'project_paints' | 'project_artisans', ids: number[]): Promise<void>
+  getSettings(): Promise<DesignerSettings>
+  saveSettings(settings: Partial<Omit<DesignerSettings, 'reviewQrUrl'>> & { reviewQrImageId?: number }): Promise<void>
+  preview(id: number): Promise<string>
+  export(id: number, format: BookFormat): Promise<string | null>
+}
+
 // --- Édition ---
 
 export interface CategoryOption {
@@ -127,9 +166,10 @@ export interface UndoResult {
   articleId: number
 }
 
-export type MenuCommand = 'undo' | 'new-article'
+export type MenuCommand = 'undo' | 'new-article' | 'new-project' | 'settings'
 
 export interface MdekoApi {
+  projects: ProjectsApi
   getAppInfo(): Promise<AppInfo>
   openDataFolder(): Promise<void>
   backupNow(): Promise<string>
@@ -170,5 +210,13 @@ export const IPC = {
   emptyTrash: 'articles:empty-trash',
   undo: 'app:undo',
   confirm: 'app:confirm',
-  menu: 'menu:command'
+  menu: 'menu:command',
+  // Projets : un canal unique, la méthode appelée est passée en premier argument.
+  projects: 'projects:call'
 } as const
+
+export const PROJECT_METHODS = [
+  'list', 'create', 'get', 'update', 'trash', 'restore', 'setRooms', 'addRenders', 'updateRender', 'removeRender',
+  'reorder', 'addNeed', 'setNeedChoice', 'setNeedAlternatives', 'removeNeed', 'listPaints', 'createPaint',
+  'listArtisans', 'saveArtisan', 'setLinks', 'getSettings', 'saveSettings', 'preview', 'export'
+] as const satisfies readonly (keyof ProjectsApi)[]

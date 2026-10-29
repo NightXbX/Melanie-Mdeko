@@ -84,7 +84,7 @@ body{font-family:Poppins,sans-serif;-webkit-font-smoothing:antialiased}
 .text{display:flex;flex-direction:column;white-space:pre-wrap;overflow:hidden;transform-origin:center}
 .text a{color:inherit;text-decoration:underline;text-underline-offset:2px;text-decoration-thickness:0.5px}
 img.el{object-fit:contain}
-${screen ? `body{background:#e8e6e3;padding:24px 0}.page{margin:0 auto 24px;box-shadow:0 2px 12px rgba(0,0,0,.12)}` : ''}`
+${screen ? `body{background:#e8e6e3;padding:24px 0}.page{margin:0 auto 24px;box-shadow:0 2px 12px rgba(0,0,0,.12)}a{pointer-events:none}` : ''}`
   const body = pages.map((p) => `<section class="page">${p.elements.map(element).join('')}</section>`).join('\n')
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><style>${css}</style></head><body>${body}</body></html>`
 }

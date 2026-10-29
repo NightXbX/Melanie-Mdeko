@@ -1,7 +1,12 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, type MdekoApi, type MenuCommand } from '@shared/api'
+import { IPC, PROJECT_METHODS, type MdekoApi, type MenuCommand, type ProjectsApi } from '@shared/api'
+
+const projects = Object.fromEntries(
+  PROJECT_METHODS.map((method) => [method, (...args: unknown[]) => ipcRenderer.invoke(IPC.projects, method, ...args)])
+) as unknown as ProjectsApi
 
 const api: MdekoApi = {
+  projects,
   getAppInfo: () => ipcRenderer.invoke(IPC.getAppInfo),
   openDataFolder: () => ipcRenderer.invoke(IPC.openDataFolder),
   backupNow: () => ipcRenderer.invoke(IPC.backupNow),

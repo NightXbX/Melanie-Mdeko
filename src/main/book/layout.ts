@@ -160,12 +160,12 @@ function renderPage(r: BookData['renders'][number]): Page {
 // --- Shopping list : une page par besoin, « Mon choix » en grand et les alternatives à côté ----------
 
 function articleLink(box: Box, url: string, size: number): Element {
-  return text(box, 'Voir le produit  →', { size, weight: 300, color: COLORS.taupe }, { link: url })
+  return text(box, 'Voir le produit ›', { size, weight: 400, color: COLORS.taupeDark }, { link: url })
 }
 
 function needPage(need: BookData['needs'][number]): Page {
   const el: Element[] = [
-    text({ x: MARGIN, y: 12, w: 200, h: 7 }, need.title.toUpperCase(), { size: 10, weight: 300, color: COLORS.taupe, letterSpacing: 2 })
+    text({ x: MARGIN, y: 12, w: 200, h: 7 }, need.title.toUpperCase(), { size: 11, weight: 400, color: COLORS.taupeDark, letterSpacing: 2 })
   ]
   const c = need.choice
   if (c) {
@@ -173,7 +173,7 @@ function needPage(need: BookData['needs'][number]): Page {
     el.push({ type: 'rect', ...photo, line: COLORS.taupeLight })
     if (c.image) el.push(fitted(c.image, { x: photo.x + 6, y: photo.y + 6, w: photo.w - 12, h: photo.h - 12 }))
     el.push(
-      text({ x: MARGIN, y: 145, w: 128, h: 5 }, 'MON CHOIX', { size: 8, weight: 400, color: COLORS.taupe, letterSpacing: 2 }),
+      text({ x: MARGIN, y: 145, w: 128, h: 5 }, 'MON CHOIX', { size: 8.5, weight: 500, color: COLORS.taupeDark, letterSpacing: 2 }),
       text({ x: MARGIN, y: 151, w: 128, h: 13 }, truncate(c.name, 90), { size: 14, weight: 300, lineHeight: 1.25 }),
       text({ x: MARGIN, y: 165, w: 70, h: 9 }, c.price, { size: 18, weight: 400, valign: 'middle' }),
       text({ x: MARGIN, y: 175, w: 128, h: 6 }, c.supplier ?? '', { size: 11, weight: 300, color: COLORS.textSoft })
@@ -184,7 +184,7 @@ function needPage(need: BookData['needs'][number]): Page {
   if (need.alternatives.length) {
     const left = 165
     el.push(
-      text({ x: left, y: 22, w: 112, h: 5 }, 'AUTRES PROPOSITIONS', { size: 8, weight: 400, color: COLORS.taupe, letterSpacing: 2 })
+      text({ x: left, y: 22, w: 112, h: 5 }, 'AUTRES PROPOSITIONS', { size: 8.5, weight: 500, color: COLORS.taupeDark, letterSpacing: 2 })
     )
     need.alternatives.slice(0, 3).forEach((a, i) => {
       const top = 30 + i * 54
@@ -227,9 +227,9 @@ function recapPages(needs: BookData['needs'], dateLabel: string): Page[] {
     cols.forEach((c, i) =>
       el.push(
         text({ x: c.x, y: head, w: c.w, h: 6 }, c.label, {
-          size: 8,
-          weight: 400,
-          color: COLORS.taupe,
+          size: 8.5,
+          weight: 500,
+          color: COLORS.taupeDark,
           letterSpacing: 2,
           align: i === 3 ? 'right' : 'left'
         })
@@ -280,14 +280,23 @@ function paintPages(paints: BookData['paints']): Page[] {
   const pages: Page[] = []
   for (const group of paints) {
     for (let start = 0; start < group.items.length; start += 12) {
+      const items = group.items.slice(start, start + 12)
+      // Pastilles centrées verticalement dans la page, comme sur ses planches de couleurs.
+      const rows = Math.ceil(items.length / 3)
+      const top = 22 + (160 - rows * 40) / 2
       const el: Element[] = [
-        text({ x: MARGIN, y: 14, w: 200, h: 7 }, group.brand.toUpperCase(), { size: 11, weight: 300, color: COLORS.taupe, letterSpacing: 3 })
+        text({ x: MARGIN, y: top - 14, w: 200, h: 7 }, group.brand.toUpperCase(), {
+          size: 11,
+          weight: 400,
+          color: COLORS.taupeDark,
+          letterSpacing: 3
+        })
       ]
-      group.items.slice(start, start + 12).forEach((p, i) => {
+      items.forEach((p, i) => {
         const col = i % 3
         const row = Math.floor(i / 3)
         const x = MARGIN + 10 + col * 85
-        const y = 32 + row * 40
+        const y = top + row * 40
         el.push(
           { type: 'ellipse', x, y, w: 26, h: 26, fill: p.hex ?? COLORS.white, line: COLORS.taupeLight },
           text({ x: x + 32, y: y + 7, w: 50, h: 12 }, [p.name.toUpperCase(), p.reference].filter(Boolean).join('\n'), {
@@ -308,11 +317,13 @@ function paintPages(paints: BookData['paints']): Page[] {
 }
 
 function artisansPage(artisans: BookData['artisans']): Page {
+  const list = artisans.slice(0, 12)
+  const top = 30 + (150 - list.length * 13) / 2
   const el: Element[] = [text({ x: MARGIN, y: 14, w: 200, h: 12 }, 'Artisans', { size: 22, valign: 'middle' })]
-  artisans.slice(0, 12).forEach((a, i) => {
-    const y = 36 + i * 13
+  list.forEach((a, i) => {
+    const y = top + i * 13
     el.push(
-      text({ x: 40, y, w: 60, h: 10 }, a.trade.toUpperCase(), { size: 9, weight: 400, color: COLORS.taupe, letterSpacing: 2, valign: 'middle' }),
+      text({ x: 40, y, w: 60, h: 10 }, a.trade.toUpperCase(), { size: 9, weight: 500, color: COLORS.taupeDark, letterSpacing: 2, valign: 'middle' }),
       text({ x: 100, y, w: 110, h: 10 }, a.city ? `${a.name} (${a.city})` : a.name, { size: 14, valign: 'middle' }),
       text({ x: 210, y, w: 50, h: 10 }, a.phone ?? '', { size: 14, valign: 'middle', align: 'right' }),
       { type: 'rect', x: 40, y: y + 11.5, w: 220, h: 0.2, fill: COLORS.taupeLight }

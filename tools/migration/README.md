@@ -14,3 +14,13 @@ python -m unittest discover tools/migration
 - Les pages sans tableau deviennent des **inspirations** (image de la page). Les pastilles de la section COULEURS deviennent des **teintes**.
 - **Doublons** : même lien nettoyé et même photo, ou même nom et même photo sans lien → seul le premier est gardé. « Même photo, liens différents » est gardé et listé dans le rapport.
 - Les règles de tri (catégories, fournisseurs, prix, dimensions, matières, liens) sont dans `regles.py`.
+
+Ensuite :
+
+```
+python tools/migration/completer_photos.py donnees
+python tools/migration/textes_par_defaut.py "ressources/<un design book>.pdf" donnees
+```
+
+- `completer_photos.py` récupère la photo annoncée par la page produit (og:image) des articles sans photo, et marque les liens morts. Il se présente honnêtement et ne contourne pas les sites qui refusent les accès automatiques : ceux-là sont listés dans `photos-non-recuperees.txt` (photo à glisser à la main depuis le site).
+- `textes_par_defaut.py` range dans les réglages l'avant-propos, « Vos envies » (pièces remplacées par `{pieces}`), « C'est à vous », les coordonnées et le QR code d'avis.
