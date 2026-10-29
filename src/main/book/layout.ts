@@ -1,11 +1,12 @@
-import type { Box, Element, ImageRef, Page, Run, TextStyle, ThemeId } from '@shared/book'
-import { COLORS, MARGIN, PAGE, RENDER, TEXT_BLOCK, THEME_FRAME, WATERMARK } from './charte'
+import { textKey, type BookAdjustment, type Box, type Element, type ImageRef, type Page, type Run, type TextStyle } from '@shared/book'
+import { BOTTOM, COLORS, MARGIN, PAGE, RENDER, TEXT_BLOCK, WATERMARK } from './charte'
 
 export type { Element, ImageRef, Page }
 
 // --- Données du book (assemblées depuis la base par data.ts) -------------------------------------
 
 export interface BookArticle {
+  id: number
   name: string
   price: string
   priceCents: number | null
@@ -13,6 +14,7 @@ export interface BookArticle {
   supplier: string | null
   url: string | null
   image: ImageRef | null
+  images: ImageRef[] // photos montrées dans le book (« Mon choix » peut en avoir plusieurs)
 }
 
 export interface BookNote {
@@ -25,7 +27,6 @@ export interface BookNote {
 }
 
 export interface BookData {
-  theme: ThemeId
   clientLabel: string // « Mme Durand »
   dateLabel: string // « Septembre 2026 »
   designerName: string
@@ -42,11 +43,16 @@ export interface BookData {
   paints: { brand: string; promoCode: string | null; items: { name: string; reference: string | null; hex: string | null }[] }[]
   artisans: { trade: string; name: string; city: string | null; phone: string | null }[]
   notes: BookNote[]
+  // Ajustements faits dans l'aperçu, par « <page>|<élément> ».
+  adjustments: Record<string, BookAdjustment>
 }
+
+type TextElement = Extract<Element, { type: 'text' }>
+type Adjust = (id: string) => BookAdjustment | undefined
 
 // --- Briques ---------------------------------------------------------------------------------------
 
-const text = (box: Box, value: string | Run[], style: TextStyle, extra: Partial<Extract<Element, { type: 'text' }>> = {}): Element => ({
+const text = (box: Box, value: string | Run[], style: TextStyle, extra: Partial<TextElement> = {}): Element => ({
   type: 'text',
   ...box,
   runs: typeof value === 'string' ? [{ text: value }] : value,
@@ -64,201 +70,109 @@ const line = (x: number, y: number, w: number, color = COLORS.taupeLight, thickn
 })
 
 // Image entière dans son cadre, centrée (équivalent de « contain »).
-function fitted(image: ImageRef, box: Box): Extract<Element, { type: 'image' }> {
+function fitted(image: ImageRef, box: Box, id?: string): Extract<Element, { type: 'image' }> {
   const scale = Math.min(box.w / image.width, box.h / image.height)
   const w = image.width * scale
   const h = image.height * scale
-  return { type: 'image', image, x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, w, h }
+  return { type: 'image', image, x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, w, h, ...(id ? { id } : {}) }
 }
 
 const truncate = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s)
 const two = (n: number) => String(n).padStart(2, '0')
 
-function logo(box: Box, size: number, align: TextStyle['align']): Element {
-  return text(box, [{ text: 'm', color: COLORS.taupe }, { text: '·', color: COLORS.taupe }, { text: 'deko' }], {
-    size,
-    align,
-    valign: 'middle',
-    lineHeight: 1
-  })
+function logo(box: Box, size: number, align: TextStyle['align'], id?: string, colors = { m: COLORS.taupe, deko: COLORS.text }, dekoWeight: 200 | 300 = 200): Element {
+  return text(
+    box,
+    [{ text: 'm', color: colors.m }, { text: '·', color: colors.m }, { text: 'deko', color: colors.deko, weight: dekoWeight }],
+    { size, align, valign: 'middle', lineHeight: 1 },
+    id ? { id } : {}
+  )
 }
 
-function articleLink(box: Box, url: string, size: number): Element {
-  return text(box, 'Voir le produit ›', { size, weight: 400, color: COLORS.taupeDark }, { link: url })
+function articleLink(box: Box, url: string, size: number, id: string): Element {
+  return text(box, 'Voir le produit ›', { size, weight: 400, color: COLORS.taupeDark }, { link: url, id })
 }
 
-function label(box: Box, value: string, size = 8.5): Element {
-  return text(box, value.toUpperCase(), { size, weight: 500, color: COLORS.taupeDark, letterSpacing: 2 })
+function label(box: Box, value: string, size = 8.5, id?: string): Element {
+  return text(box, value.toUpperCase(), { size, weight: 500, color: COLORS.taupeDark, letterSpacing: 2 }, id ? { id } : {})
 }
 
-// --- Habillage propre à chaque style ---------------------------------------------------------------
-
-// Repères de page : pied de page (Classique, Contemporain) ou en-tête discret (Épuré).
-function chrome(theme: ThemeId, page: number, section: string): Element[] {
-  switch (theme) {
-    case 'classique':
-      return [
-        text({ x: 185, y: 193, w: 90, h: 8 }, [{ text: 'Design Book', color: COLORS.taupe }, { text: ` – Page ${page}` }], {
-          size: 12,
-          align: 'right',
-          valign: 'middle'
-        })
-      ]
-    case 'epure':
-      return [
-        text({ x: MARGIN, y: 7, w: 180, h: 6 }, section.toUpperCase(), {
-          size: 8.5,
-          weight: 500,
-          color: COLORS.taupeDark,
-          letterSpacing: 2,
-          valign: 'middle'
-        }),
-        text({ x: 237, y: 7, w: 40, h: 6 }, two(page), { size: 9, weight: 400, color: COLORS.textSoft, align: 'right', valign: 'middle' })
-      ]
-    case 'contemporain':
-      return [
-        text({ x: 98.5, y: 198, w: 100, h: 6 }, [{ text: 'm', color: COLORS.taupe }, { text: '·deko' }, { text: `   ·   ${page}`, color: COLORS.textSoft }], {
-          size: 9,
-          weight: 300,
-          align: 'center',
-          valign: 'middle'
-        })
-      ]
-  }
+// Pied de page discret : m·deko et le numéro de page.
+function footer(page: number): Element[] {
+  return [
+    text({ x: 98.5, y: 198, w: 100, h: 6 }, [{ text: 'm', color: COLORS.taupe }, { text: '·deko' }, { text: `   ·   ${page}`, color: COLORS.textSoft }], {
+      size: 9,
+      weight: 300,
+      align: 'center',
+      valign: 'middle'
+    })
+  ]
 }
 
 // Intercalaire : titre horizontal, lisible, avec un sur-titre (numéro de section du sommaire, ou « Shopping list »
 // au-dessus d'une pièce).
-function dividerPage(theme: ThemeId, title: string, n: string, key: string): Page {
-  switch (theme) {
-    case 'classique':
-      return {
-        key,
-        elements: [
-          text({ x: 40, y: 82, w: 200, h: 8 }, n, { size: 13, weight: 400, color: COLORS.taupeDark, letterSpacing: 2 }),
-          text({ x: 40, y: 92, w: 240, h: 22 }, title, { size: 40, valign: 'middle', lineHeight: 1 }),
-          line(40, 120, 40, COLORS.taupe, 0.3)
-        ]
-      }
-    case 'epure':
-      return {
-        key,
-        elements: [
-          text({ x: MARGIN, y: 52, w: 140, h: 38 }, n, { size: 90, color: COLORS.taupeLight, valign: 'bottom', lineHeight: 1 }),
-          text({ x: MARGIN, y: 96, w: 250, h: 16 }, title, { size: 30, valign: 'middle', lineHeight: 1 })
-        ]
-      }
-    case 'contemporain':
-      return {
-        key,
-        elements: [
-          text({ x: 48.5, y: 80, w: 200, h: 7 }, `—  ${n}  —`, { size: 10, weight: 400, color: COLORS.taupeDark, align: 'center', letterSpacing: 3 }),
-          text({ x: 13.5, y: 90, w: 270, h: 18 }, title.toUpperCase(), { size: 26, align: 'center', valign: 'middle', letterSpacing: 6, lineHeight: 1 }),
-          line(138.5, 114, 20, COLORS.taupe, 0.3)
-        ]
-      }
+function dividerPage(title: string, n: string, key: string): Page {
+  return {
+    key,
+    elements: [
+      text({ x: 48.5, y: 80, w: 200, h: 7 }, `—  ${n}  —`, { size: 10, weight: 400, color: COLORS.taupeDark, align: 'center', letterSpacing: 3 }, { id: 'number' }),
+      text({ x: 13.5, y: 90, w: 270, h: 18 }, title.toUpperCase(), { size: 26, align: 'center', valign: 'middle', letterSpacing: 6, lineHeight: 1 }, { id: 'title' }),
+      line(138.5, 114, 20, COLORS.taupe, 0.3)
+    ]
   }
 }
 
-function coverPage(theme: ThemeId, d: BookData): Page {
-  switch (theme) {
-    case 'classique':
-      return {
-        key: 'cover',
-        elements: [
-          logo({ x: 60, y: 82, w: 160, h: 30 }, 77, 'center'),
-          text({ x: 175, y: 163, w: 100, h: 8 }, 'Design Book', { size: 19, color: COLORS.taupe, align: 'right' }),
-          text({ x: 175, y: 173, w: 100, h: 8 }, d.clientLabel, { size: 17, align: 'right' }),
-          text({ x: 175, y: 182, w: 100, h: 6 }, d.dateLabel, { size: 13, align: 'right' })
-        ]
-      }
-    case 'epure':
-      return {
-        key: 'cover',
-        elements: [
-          logo({ x: MARGIN, y: 16, w: 80, h: 12 }, 26, 'left'),
-          line(MARGIN, 112, 30, COLORS.taupe, 0.3),
-          text({ x: MARGIN, y: 118, w: 250, h: 20 }, d.clientLabel, { size: 40, valign: 'middle', lineHeight: 1 }),
-          text({ x: MARGIN, y: 142, w: 250, h: 7 }, `Design Book · ${d.dateLabel}`.toUpperCase(), {
-            size: 10,
-            weight: 400,
-            color: COLORS.taupeDark,
-            letterSpacing: 3
-          })
-        ]
-      }
-    case 'contemporain':
-      return {
-        key: 'cover',
-        elements: [
-          text({ x: 48.5, y: 70, w: 200, h: 7 }, 'DESIGN BOOK', { size: 11, weight: 400, color: COLORS.taupeDark, align: 'center', letterSpacing: 6 }),
-          text({ x: 13.5, y: 82, w: 270, h: 22 }, d.clientLabel, { size: 44, align: 'center', valign: 'middle', lineHeight: 1 }),
-          text({ x: 48.5, y: 108, w: 200, h: 7 }, d.dateLabel, { size: 13, align: 'center' }),
-          logo({ x: 98.5, y: 176, w: 100, h: 12 }, 24, 'center')
-        ]
-      }
+// Couverture : m·deko en grand au centre, le client et la date en bas.
+function coverPage(d: BookData): Page {
+  return {
+    key: 'cover',
+    elements: [
+      text({ x: 48.5, y: 66, w: 200, h: 7 }, 'DESIGN BOOK', { size: 11, weight: 400, color: COLORS.taupeDark, align: 'center', letterSpacing: 6 }, { id: 'title' }),
+      logo({ x: 28.5, y: 78, w: 240, h: 36 }, 80, 'center', 'logo'),
+      line(138.5, 160, 20, COLORS.taupe, 0.3),
+      text({ x: 28.5, y: 166, w: 240, h: 10 }, d.clientLabel, { size: 18, align: 'center', valign: 'middle', lineHeight: 1 }, { id: 'client' }),
+      text({ x: 48.5, y: 177, w: 200, h: 7 }, d.dateLabel, { size: 12, weight: 300, color: COLORS.textSoft, align: 'center', valign: 'middle' }, { id: 'date' })
+    ]
   }
 }
 
-function backCover(theme: ThemeId, d: BookData): Page {
+// 4e de couverture : grand disque taupe avec le logo et les coordonnées, QR code « avis » posé sur son bord.
+function backCover(d: BookData): Page {
+  const cx = 117.5
+  const cy = 108.5
+  const r = 83
+  const column = { x: 56, w: 92 } // colonne de texte, un peu à gauche du centre du disque
   const lines = [d.address, d.phone, d.email].filter(Boolean).join('\n')
-  const qr = (x: number, y: number): Element[] =>
-    d.reviewQr ? [text({ x, y, w: 60, h: 7 }, 'Laisser un avis :', { size: 12 }), fitted(d.reviewQr, { x, y: y + 9, w: 40, h: 40 })] : []
-  switch (theme) {
-    case 'classique': {
-      const cx = 100
-      const cy = 95
-      const r = 67
-      return {
-        key: 'back',
-        elements: [
-          { type: 'ellipse', x: cx - r, y: cy - r, w: 2 * r, h: 2 * r, fill: COLORS.disc },
-          logo({ x: cx - r, y: cy - 34, w: 2 * r, h: 24 }, 58, 'center'),
-          text({ x: cx - r, y: cy - 4, w: 2 * r, h: 9 }, d.designerName, { size: 17, align: 'center' }),
-          text({ x: cx - r + 10, y: cy + 8, w: 2 * r - 20, h: 30 }, lines, { size: 12, align: 'center', lineHeight: 1.5 }),
-          ...qr(178, 70)
-        ]
-      }
-    }
-    case 'epure':
-      return {
-        key: 'back',
-        elements: [
-          logo({ x: MARGIN, y: 70, w: 120, h: 18 }, 40, 'left'),
-          line(MARGIN, 94, 30, COLORS.taupe, 0.3),
-          text({ x: MARGIN, y: 100, w: 150, h: 9 }, d.designerName, { size: 16 }),
-          text({ x: MARGIN, y: 111, w: 150, h: 30 }, lines, { size: 11, weight: 300, lineHeight: 1.6 }),
-          ...qr(210, 70)
-        ]
-      }
-    case 'contemporain':
-      return {
-        key: 'back',
-        elements: [
-          { type: 'ellipse', x: 108.5, y: 42, w: 80, h: 80, line: COLORS.taupe },
-          logo({ x: 108.5, y: 72, w: 80, h: 20 }, 40, 'center'),
-          text({ x: 48.5, y: 132, w: 200, h: 9 }, d.designerName, { size: 16, align: 'center' }),
-          text({ x: 48.5, y: 143, w: 200, h: 26 }, lines, { size: 11, weight: 300, align: 'center', lineHeight: 1.6 }),
-          ...qr(228, 140)
-        ]
-      }
+  const elements: Element[] = [
+    { type: 'ellipse', x: cx - r, y: cy - r, w: 2 * r, h: 2 * r, fill: COLORS.disc, id: 'disc' },
+    logo({ ...column, y: 66, h: 26 }, 58, 'center', 'logo', { m: COLORS.discLogo, deko: '#2E2E2E' }, 300),
+    text({ ...column, y: 99, h: 9 }, d.designerName, { size: 17, weight: 300, color: '#2E2E2E', align: 'center', valign: 'middle' }, { id: 'name' }),
+    text({ x: column.x - 4, w: column.w + 8, y: 109.5, h: 40 }, lines, { size: 13, weight: 300, color: '#2E2E2E', align: 'center', lineHeight: 1.7 }, { id: 'contact' })
+  ]
+  if (d.reviewQr) {
+    elements.push(
+      text({ x: 160, y: 74, w: 70, h: 8 }, 'Laisser un avis :', { size: 13, weight: 300, valign: 'middle' }, { id: 'review' }),
+      { type: 'rect', x: 160, y: 85, w: 54.5, h: 57.5, fill: COLORS.white, id: 'qr-frame' },
+      fitted(d.reviewQr, { x: 162.5, y: 87.5, w: 49.5, h: 52.5 }, 'qr')
+    )
   }
+  return { key: 'back', elements }
 }
 
 // --- Pages de contenu ------------------------------------------------------------------------------
 
-function textPage(theme: ThemeId, key: string, body: string, edit: string, signature: string | null): Page {
-  const { x, width, height, size, lineHeight } = TEXT_BLOCK
-  const y = 34 + THEME_FRAME[theme].top
-  const elements = [text({ x, y, w: width, h: height }, body, { size, lineHeight, align: 'justify' }, { edit })]
-  if (signature) elements.push(text({ x, y: y + height + 2, w: width, h: 10 }, signature, { size, align: 'right' }))
+function textPage(key: string, body: string, edit: string, signature: string | null): Page {
+  const { x, y, width, height, size, lineHeight } = TEXT_BLOCK
+  const elements = [text({ x, y, w: width, h: height }, body, { size, lineHeight, align: 'justify' }, { edit, id: 'body' })]
+  if (signature) elements.push(text({ x, y: y + height + 2, w: width, h: 10 }, signature, { size, align: 'right' }, { id: 'signature' }))
   return { key, elements }
 }
 
-function renderPage(theme: ThemeId, r: BookData['renders'][number]): Page {
-  const frame = THEME_FRAME[theme]
-  const img = fitted(r.image, { x: RENDER.x, y: frame.renderTop, w: RENDER.width, h: RENDER.height })
-  // Petit cartouche m·deko en bas à droite du rendu, comme sur ses planches.
+function renderPage(r: BookData['renders'][number], adjust: Adjust): Page {
+  const slot = { x: RENDER.x, y: RENDER.y, w: RENDER.width, h: RENDER.height }
+  const a = adjust('render')
+  const img = fitted(r.image, a ? { x: a.x ?? slot.x, y: a.y ?? slot.y, w: a.w ?? slot.w, h: a.h ?? slot.h } : slot, 'render')
+  // Petit cartouche m·deko en bas à droite du rendu, comme sur ses planches : il suit le rendu.
   const wx = img.x + img.w - WATERMARK.width
   const wy = img.y + img.h - WATERMARK.height
   const elements: Element[] = [
@@ -275,33 +189,57 @@ function renderPage(theme: ThemeId, r: BookData['renders'][number]): Page {
   elements.push(
     text({ x: img.x, y, w: img.w, h: 7 }, r.caption ?? '', { size: 11, weight: 300, color: COLORS.textSoft }, {
       edit: `caption:${r.id}`,
-      placeholder: 'Ajouter une légende'
+      placeholder: 'Ajouter une légende',
+      id: 'caption'
     })
   )
   y += 9
   if (r.inset) {
-    const h = Math.min(28, frame.bottom - y)
-    if (h > 8) elements.push(fitted(r.inset, { x: img.x, y, w: 60, h }))
+    const h = Math.min(28, BOTTOM - y)
+    if (h > 8) elements.push(fitted(r.inset, { x: img.x, y, w: 60, h }, 'inset'))
   }
   return { key: `render:${r.id}`, elements }
+}
+
+// Plusieurs photos d'un même article dans son cadre : 1 en grand, 2 côte à côte, 3 (une grande et deux
+// petites), 4 en carré. Au-delà, les 4 premières.
+export function photoGrid(box: Box, count: number, gap = 3): Box[] {
+  const n = Math.min(count, 4)
+  const half = (v: number) => (v - gap) / 2
+  if (n <= 1) return [box]
+  if (n === 2) return [0, 1].map((i) => ({ x: box.x + i * (half(box.w) + gap), y: box.y, w: half(box.w), h: box.h }))
+  if (n === 3) {
+    const big = box.w * 0.6
+    const small = box.w - big - gap
+    return [
+      { x: box.x, y: box.y, w: big, h: box.h },
+      { x: box.x + big + gap, y: box.y, w: small, h: half(box.h) },
+      { x: box.x + big + gap, y: box.y + half(box.h) + gap, w: small, h: half(box.h) }
+    ]
+  }
+  return [0, 1, 2, 3].map((i) => ({
+    x: box.x + (i % 2) * (half(box.w) + gap),
+    y: box.y + Math.floor(i / 2) * (half(box.h) + gap),
+    w: half(box.w),
+    h: half(box.h)
+  }))
 }
 
 const FIRST_ALTERNATIVES = 3
 const ALTERNATIVES_PER_PAGE = 8
 
 // Une page par besoin : « Mon choix » en grand, 3 propositions à côté, les suivantes sur des pages « suite ».
-function needPages(theme: ThemeId, need: BookData['needs'][number]): Page[] {
-  const top = THEME_FRAME[theme].top
+function needPages(need: BookData['needs'][number]): Page[] {
   const title = (suffix = '') =>
-    text({ x: MARGIN, y: 12 + top, w: 200, h: 7 }, need.title.toUpperCase() + suffix, {
+    text({ x: MARGIN, y: 12, w: 200, h: 7 }, need.title.toUpperCase() + suffix, {
       size: 11,
       weight: 400,
       color: COLORS.taupeDark,
       letterSpacing: 2
-    }, suffix ? {} : { edit: `needLabel:${need.id}` })
+    }, suffix ? {} : { edit: `needLabel:${need.id}`, id: 'title' })
 
   const room = () =>
-    text({ x: 297 - MARGIN - 90, y: 12 + top, w: 90, h: 7 }, need.room?.name.toUpperCase() ?? '', {
+    text({ x: 297 - MARGIN - 90, y: 12, w: 90, h: 7 }, need.room?.name.toUpperCase() ?? '', {
       size: 11,
       weight: 300,
       color: COLORS.taupeDark,
@@ -312,42 +250,46 @@ function needPages(theme: ThemeId, need: BookData['needs'][number]): Page[] {
   const el: Element[] = [title(), room()]
   const c = need.choice
   if (c) {
-    const photo = { x: MARGIN, y: 22 + top, w: 128, h: 118 }
-    el.push({ type: 'rect', ...photo, line: COLORS.taupeLight })
-    if (c.image) el.push(fitted(c.image, { x: photo.x + 6, y: photo.y + 6, w: photo.w - 12, h: photo.h - 12 }))
+    const id = (part: string) => `choice:${c.id}:${part}`
+    const photo = { x: MARGIN, y: 22, w: 128, h: 118 }
+    el.push({ type: 'rect', ...photo, line: COLORS.taupeLight, id: id('frame') })
+    const inner = { x: photo.x + 6, y: photo.y + 6, w: photo.w - 12, h: photo.h - 12 }
+    const images = c.images.slice(0, 4)
+    if (images.length) photoGrid(inner, images.length).forEach((cell, i) => el.push(fitted(images[i], cell, id(`photo${i + 1}`))))
     el.push(
-      label({ x: MARGIN, y: 145 + top, w: 128, h: 5 }, 'Mon choix'),
-      text({ x: MARGIN, y: 151 + top, w: 128, h: 13 }, truncate(c.name, 90), { size: 14, weight: 300, lineHeight: 1.25 }),
-      text({ x: MARGIN, y: 165 + top, w: 70, h: 9 }, c.price, { size: 18, weight: 400, valign: 'middle' }),
-      text({ x: MARGIN, y: 175 + top, w: 128, h: 6 }, c.supplier ?? '', { size: 11, weight: 300, color: COLORS.textSoft })
+      label({ x: MARGIN, y: 145, w: 128, h: 5 }, 'Mon choix', 8.5, id('label')),
+      text({ x: MARGIN, y: 151, w: 128, h: 13 }, truncate(c.name, 90), { size: 14, weight: 300, lineHeight: 1.25 }, { id: id('name') }),
+      text({ x: MARGIN, y: 165, w: 70, h: 9 }, c.price, { size: 18, weight: 400, valign: 'middle' }, { id: id('price') }),
+      text({ x: MARGIN, y: 175, w: 128, h: 6 }, c.supplier ?? '', { size: 11, weight: 300, color: COLORS.textSoft }, { id: id('supplier') })
     )
-    if (c.url) el.push(articleLink({ x: MARGIN, y: 182 + top, w: 60, h: 6 }, c.url, 10))
+    if (c.url) el.push(articleLink({ x: MARGIN, y: 182, w: 60, h: 6 }, c.url, 10, id('link')))
   }
 
   const first = need.alternatives.slice(0, FIRST_ALTERNATIVES)
   if (first.length) {
     const left = 165
     // Filet vertical entre « Mon choix » et les propositions.
-    el.push(label({ x: left, y: 22 + top, w: 112, h: 5 }, 'Autres propositions'), {
+    el.push(label({ x: left, y: 22, w: 112, h: 5 }, 'Autres propositions', 8.5, 'others'), {
       type: 'rect',
       x: 156,
-      y: 22 + top,
+      y: 22,
       w: 0.2,
       h: 160,
       fill: COLORS.taupeLight
     })
     first.forEach((a, i) => {
-      const y = 30 + top + i * 54
+      const id = (part: string) => `alt:${a.id}:${part}`
+      const y = 30 + i * 54
       const photo = { x: left, y, w: 46, h: 46 }
-      el.push({ type: 'rect', ...photo, line: COLORS.taupeLight })
-      if (a.image) el.push(fitted(a.image, { x: photo.x + 3, y: photo.y + 3, w: photo.w - 6, h: photo.h - 6 }))
+      el.push({ type: 'rect', ...photo, line: COLORS.taupeLight, id: id('frame') })
+      if (a.image) el.push(fitted(a.image, { x: photo.x + 3, y: photo.y + 3, w: photo.w - 6, h: photo.h - 6 }, id('photo')))
       const tx = left + 51
       el.push(
-        text({ x: tx, y: y + 1, w: 61, h: 15 }, truncate(a.name, 70), { size: 10, weight: 300, lineHeight: 1.25 }),
-        text({ x: tx, y: y + 17, w: 61, h: 7 }, a.price, { size: 13, weight: 400 }),
-        text({ x: tx, y: y + 25, w: 61, h: 5 }, a.supplier ?? '', { size: 9, weight: 300, color: COLORS.textSoft })
+        text({ x: tx, y: y + 1, w: 61, h: 15 }, truncate(a.name, 70), { size: 10, weight: 300, lineHeight: 1.25 }, { id: id('name') }),
+        text({ x: tx, y: y + 17, w: 61, h: 7 }, a.price, { size: 13, weight: 400 }, { id: id('price') }),
+        text({ x: tx, y: y + 25, w: 61, h: 5 }, a.supplier ?? '', { size: 9, weight: 300, color: COLORS.textSoft }, { id: id('supplier') })
       )
-      if (a.url) el.push(articleLink({ x: tx, y: y + 31, w: 40, h: 5 }, a.url, 9))
+      if (a.url) el.push(articleLink({ x: tx, y: y + 31, w: 40, h: 5 }, a.url, 9, id('link')))
     })
   }
   const pages: Page[] = [{ key: `need:${need.id}`, elements: el }]
@@ -357,17 +299,18 @@ function needPages(theme: ThemeId, need: BookData['needs'][number]): Page[] {
   for (let start = 0, n = 2; start < rest.length; start += ALTERNATIVES_PER_PAGE, n++) {
     const els: Element[] = [title('  ·  AUTRES PROPOSITIONS (SUITE)'), room()]
     rest.slice(start, start + ALTERNATIVES_PER_PAGE).forEach((a, i) => {
+      const id = (part: string) => `alt:${a.id}:${part}`
       const x = MARGIN + (i % 4) * 65
-      const y = 24 + top + Math.floor(i / 4) * 82
+      const y = 24 + Math.floor(i / 4) * 82
       const photo = { x, y, w: 60, h: 46 }
-      els.push({ type: 'rect', ...photo, line: COLORS.taupeLight })
-      if (a.image) els.push(fitted(a.image, { x: x + 3, y: y + 3, w: 54, h: 40 }))
+      els.push({ type: 'rect', ...photo, line: COLORS.taupeLight, id: id('frame') })
+      if (a.image) els.push(fitted(a.image, { x: x + 3, y: y + 3, w: 54, h: 40 }, id('photo')))
       els.push(
-        text({ x, y: y + 49, w: 60, h: 11 }, truncate(a.name, 60), { size: 10, weight: 300, lineHeight: 1.25 }),
-        text({ x, y: y + 61, w: 60, h: 6 }, a.price, { size: 12, weight: 400 }),
-        text({ x, y: y + 68, w: 60, h: 5 }, a.supplier ?? '', { size: 9, weight: 300, color: COLORS.textSoft })
+        text({ x, y: y + 49, w: 60, h: 11 }, truncate(a.name, 60), { size: 10, weight: 300, lineHeight: 1.25 }, { id: id('name') }),
+        text({ x, y: y + 61, w: 60, h: 6 }, a.price, { size: 12, weight: 400 }, { id: id('price') }),
+        text({ x, y: y + 68, w: 60, h: 5 }, a.supplier ?? '', { size: 9, weight: 300, color: COLORS.textSoft }, { id: id('supplier') })
       )
-      if (a.url) els.push(articleLink({ x, y: y + 74, w: 40, h: 5 }, a.url, 9))
+      if (a.url) els.push(articleLink({ x, y: y + 74, w: 40, h: 5 }, a.url, 9, id('link')))
     })
     pages.push({ key: `need:${need.id}:${n}`, elements: els })
   }
@@ -375,13 +318,13 @@ function needPages(theme: ThemeId, need: BookData['needs'][number]): Page[] {
 }
 
 // Pages de la shopping list : les articles sans pièce, puis chaque pièce précédée de son intercalaire.
-function shoppingPages(theme: ThemeId, needs: BookData['needs']): Page[] {
+function shoppingPages(needs: BookData['needs']): Page[] {
   const pages: Page[] = []
   let room: number | null = null
   for (const need of needs) {
-    if (need.room && need.room.id !== room) pages.push(dividerPage(theme, need.room.name, 'Shopping list', `room:${need.room.id}`))
+    if (need.room && need.room.id !== room) pages.push(dividerPage(need.room.name, 'Shopping list', `room:${need.room.id}`))
     room = need.room?.id ?? null
-    pages.push(...needPages(theme, need))
+    pages.push(...needPages(need))
   }
   return pages
 }
@@ -390,11 +333,10 @@ const RECAP_ROWS = 15
 
 function formatEuros(cents: number): string {
   const v = cents / 100
-  return `${v.toLocaleString('fr-FR', { minimumFractionDigits: cents % 100 ? 2 : 0, maximumFractionDigits: 2 }).replace(/[  ]/g, ' ')} €`
+  return `${v.toLocaleString('fr-FR', { minimumFractionDigits: cents % 100 ? 2 : 0, maximumFractionDigits: 2 }).replace(/[  ]/g, ' ')} €`
 }
 
-function recapPages(theme: ThemeId, needs: BookData['needs'], dateLabel: string): Page[] {
-  const top = THEME_FRAME[theme].top
+function recapPages(needs: BookData['needs'], dateLabel: string): Page[] {
   const rows = needs.filter((n) => n.choice)
   if (!rows.length) return []
   const pages: Page[] = []
@@ -420,8 +362,8 @@ function recapPages(theme: ThemeId, needs: BookData['needs'], dateLabel: string)
     else last.push(l)
   }
   for (const [c, slice] of chunks.entries()) {
-    const head = 30 + top
-    const el: Element[] = [text({ x: MARGIN, y: 12 + top, w: 200, h: 12 }, 'Récapitulatif de mes choix', { size: 22, valign: 'middle' })]
+    const head = 30
+    const el: Element[] = [text({ x: MARGIN, y: 12, w: 200, h: 12 }, 'Récapitulatif de mes choix', { size: 22, valign: 'middle' }, { id: 'title' })]
     cols.forEach((c, i) =>
       el.push(
         text({ x: c.x, y: head, w: c.w, h: 6 }, c.label.toUpperCase(), {
@@ -463,7 +405,7 @@ function recapPages(theme: ThemeId, needs: BookData['needs'], dateLabel: string)
           size: 8,
           weight: 300,
           color: COLORS.textSoft
-        })
+        }, { id: 'disclaimer' })
       )
     }
     pages.push({ key: `recap:${pages.length + 1}`, elements: el })
@@ -471,32 +413,49 @@ function recapPages(theme: ThemeId, needs: BookData['needs'], dateLabel: string)
   return pages
 }
 
-function paintPages(theme: ThemeId, paints: BookData['paints']): Page[] {
+const CHIPS_PER_PAGE = 8
+
+// Nuancier façon planche d'architecte : grands échantillons rectangulaires, numérotés, avec nom,
+// référence et code couleur sous chacun ; une marque par page, son nom en cartouche au-dessus d'un filet.
+function paintPages(paints: BookData['paints']): Page[] {
   const pages: Page[] = []
+  let n = 0
   for (const group of paints) {
-    for (let start = 0; start < group.items.length; start += 12) {
-      const items = group.items.slice(start, start + 12)
-      // Pastilles centrées verticalement dans la page, comme sur ses planches de couleurs.
-      const rows = Math.ceil(items.length / 3)
-      const top = 22 + THEME_FRAME[theme].top + (160 - rows * 40) / 2
+    for (let start = 0; start < group.items.length; start += CHIPS_PER_PAGE) {
+      const items = group.items.slice(start, start + CHIPS_PER_PAGE)
+      const rows = items.length > 4 ? 2 : 1
+      const perRow = Math.min(items.length, 4)
+      const gap = 12
+      const w = (257 - 3 * gap) / 4
+      const h = rows === 2 ? 50 : 72
+      const legend = 24
+      const top = 34 + (152 - rows * (h + legend) - (rows - 1) * 8) / 2
+      const left = MARGIN + ((4 - perRow) * (w + gap)) / 2 // rangée centrée s'il y a moins de 4 teintes
       const el: Element[] = [
-        text({ x: MARGIN, y: top - 14, w: 200, h: 7 }, group.brand.toUpperCase(), { size: 11, weight: 400, color: COLORS.taupeDark, letterSpacing: 3 })
+        text({ x: MARGIN, y: 12, w: 170, h: 8 }, group.brand.toUpperCase(), { size: 11, weight: 400, color: COLORS.taupeDark, letterSpacing: 3, valign: 'middle' }, { id: 'brand' }),
+        text({ x: 297 - MARGIN - 80, y: 12, w: 80, h: 8 }, 'NUANCIER', { size: 8.5, weight: 400, color: COLORS.textSoft, letterSpacing: 3, align: 'right', valign: 'middle' }),
+        line(MARGIN, 22, 257, COLORS.text, 0.15)
       ]
       items.forEach((p, i) => {
-        const x = MARGIN + 10 + (i % 3) * 85
-        const y = top + Math.floor(i / 3) * 40
+        n++
+        const id = (part: string) => `paint:${start + i}:${part}`
+        const x = left + (i % 4) * (w + gap)
+        const y = top + Math.floor(i / 4) * (h + legend + 8)
         el.push(
-          { type: 'ellipse', x, y, w: 26, h: 26, fill: p.hex ?? COLORS.white, line: COLORS.taupeLight },
-          text({ x: x + 32, y: y + 7, w: 50, h: 12 }, [p.name.toUpperCase(), p.reference].filter(Boolean).join('\n'), {
-            size: 9,
+          { type: 'rect', x, y, w, h, fill: p.hex ?? COLORS.white, line: p.hex ? undefined : COLORS.taupeLight, id: id('chip') },
+          line(x, y + h + 3, w, COLORS.text, 0.15),
+          text({ x, y: y + h + 5, w: 12, h: 5 }, two(n), { size: 8, weight: 500, color: COLORS.taupeDark, letterSpacing: 1 }),
+          text({ x: x + 12, y: y + h + 5, w: w - 12, h: 5 }, p.name.toUpperCase(), { size: 9, weight: 400, letterSpacing: 1.5 }, { id: id('name') }),
+          text({ x: x + 12, y: y + h + 11, w: w - 12, h: 10 }, [p.reference, p.hex?.toUpperCase()].filter(Boolean).join('\n'), {
+            size: 8,
             weight: 300,
-            valign: 'middle',
-            letterSpacing: 1
-          })
+            color: COLORS.textSoft,
+            lineHeight: 1.35
+          }, { id: id('ref') })
         )
       })
       if (group.promoCode) {
-        el.push(text({ x: 177, y: 180, w: 100, h: 7 }, `CODE PROMO : ${group.promoCode}`, { size: 9, weight: 300, align: 'right', letterSpacing: 1 }))
+        el.push(text({ x: 177, y: 186, w: 100, h: 6 }, `CODE PROMO : ${group.promoCode}`, { size: 9, weight: 300, align: 'right', letterSpacing: 1 }, { id: 'promo' }))
       }
       pages.push({ key: `paints:${pages.length + 1}`, elements: el })
     }
@@ -504,10 +463,10 @@ function paintPages(theme: ThemeId, paints: BookData['paints']): Page[] {
   return pages
 }
 
-function artisansPage(theme: ThemeId, artisans: BookData['artisans']): Page {
+function artisansPage(artisans: BookData['artisans']): Page {
   const list = artisans.slice(0, 12)
-  const top = 30 + THEME_FRAME[theme].top + (150 - list.length * 13) / 2
-  const el: Element[] = [text({ x: MARGIN, y: 14 + THEME_FRAME[theme].top, w: 200, h: 12 }, 'Artisans', { size: 22, valign: 'middle' })]
+  const top = 30 + (150 - list.length * 13) / 2
+  const el: Element[] = [text({ x: MARGIN, y: 14, w: 200, h: 12 }, 'Artisans', { size: 22, valign: 'middle' }, { id: 'title' })]
   list.forEach((a, i) => {
     const y = top + i * 13
     el.push(
@@ -526,8 +485,33 @@ function note(n: BookNote): Element {
   const lines = n.text.split('\n').reduce((sum, l) => sum + Math.max(1, Math.ceil(l.length / perLine)), 0)
   return text({ x: n.x, y: n.y, w: n.w, h: Math.max(7, lines * 5.4 + 2) }, n.text, { size: 11, weight: 300 }, {
     edit: `note:${n.id}`,
-    placeholder: 'Votre texte'
+    placeholder: 'Votre texte',
+    id: `note:${n.id}`
   })
+}
+
+// Applique les ajustements de l'aperçu (position, taille, texte) aux éléments identifiés de la page.
+// Les textes à une seule couleur sans équivalent dans la base deviennent modifiables pour ce book.
+function applyAdjustments(page: Page, adjustments: Record<string, BookAdjustment>): Page {
+  return {
+    key: page.key,
+    elements: page.elements.map((e): Element => {
+      if (!e.id || e.id.startsWith('note:')) return e
+      let out: Element = e
+      if (out.type === 'text' && !out.edit && !out.link && out.runs.length === 1) out = { ...out, edit: textKey(page.key, e.id) }
+      const a = adjustments[`${page.key}|${e.id}`]
+      if (!a) return out
+      const box = { x: a.x ?? e.x, y: a.y ?? e.y, w: a.w ?? e.w, h: a.h ?? e.h }
+      const adjusted = [a.x, a.y, a.w, a.h, a.size].some((v) => v !== undefined)
+      if (out.type === 'image') return { ...fitted(out.image, box, e.id), adjusted }
+      out = { ...out, ...box, adjusted }
+      if (out.type === 'text') {
+        if (a.size) out = { ...out, style: { ...out.style, size: a.size } }
+        if (a.text !== undefined && out.edit?.startsWith('text:')) out = { ...out, runs: [{ ...out.runs[0], text: a.text }] }
+      }
+      return out
+    })
+  }
 }
 
 // --- Assemblage du book ------------------------------------------------------------------------------
@@ -539,48 +523,47 @@ interface Section {
 }
 
 export function buildBook(d: BookData): Page[] {
-  const t = d.theme
+  const adjust = (pageKey: string): Adjust => (id) => d.adjustments[`${pageKey}|${id}`]
   const plans = d.renders.filter((r) => r.section === 'plans')
   const changes = d.renders.filter((r) => r.section === 'changes')
   const sections: Section[] = [
-    { title: 'Avant-propos', pages: [textPage(t, 'intro', d.intro, 'intro', d.designerName)], divider: false },
-    { title: 'Vos envies', pages: [textPage(t, 'wishes', d.wishes, 'wishes', null)], divider: false }
+    { title: 'Avant-propos', pages: [textPage('intro', d.intro, 'intro', d.designerName)], divider: false },
+    { title: 'Vos envies', pages: [textPage('wishes', d.wishes, 'wishes', null)], divider: false }
   ]
-  if (plans.length) sections.push({ title: 'Plans d’aménagement intérieur', pages: plans.map((r) => renderPage(t, r)), divider: true })
-  if (changes.length) sections.push({ title: 'Modifications', pages: changes.map((r) => renderPage(t, r)), divider: true })
+  const renderPages = (list: typeof plans) => list.map((r) => renderPage(r, adjust(`render:${r.id}`)))
+  if (plans.length) sections.push({ title: 'Plans d’aménagement intérieur', pages: renderPages(plans), divider: true })
+  if (changes.length) sections.push({ title: 'Modifications', pages: renderPages(changes), divider: true })
   if (d.needs.length) {
     sections.push({
       title: 'Shopping list',
-      pages: [...shoppingPages(t, d.needs), ...recapPages(t, d.needs, d.dateLabel)],
+      pages: [...shoppingPages(d.needs), ...recapPages(d.needs, d.dateLabel)],
       divider: true
     })
   }
-  if (d.paints.length) sections.push({ title: 'Choix des couleurs', pages: paintPages(t, d.paints), divider: true })
-  if (d.artisans.length) sections.push({ title: 'Artisans', pages: [artisansPage(t, d.artisans)], divider: false })
+  if (d.paints.length) sections.push({ title: 'Teintes et couleurs', pages: paintPages(d.paints), divider: true })
+  if (d.artisans.length) sections.push({ title: 'Artisans', pages: [artisansPage(d.artisans)], divider: false })
   sections.push({
     title: 'C’est à vous !',
-    pages: [textPage(t, 'closing', d.closing, 'closing', d.designerName.split(' ')[0] || null)],
+    pages: [textPage('closing', d.closing, 'closing', d.designerName.split(' ')[0] || null)],
     divider: false
   })
 
   // Intercalaires numérotés comme le sommaire, puis numérotation : couverture = 1, sommaire = 2.
   sections.forEach((s, i) => {
-    if (s.divider) s.pages.unshift(dividerPage(t, s.title, two(i + 1), `section:${i + 1}`))
+    if (s.divider) s.pages.unshift(dividerPage(s.title, two(i + 1), `section:${i + 1}`))
   })
   let page = 3
   const toc: { range: string; title: string }[] = []
-  const sectionOf: string[] = ['', 'Sommaire']
   for (const s of sections) {
     const first = page
     page += s.pages.length
     toc.push({ range: s.pages.length > 1 ? `${first}-${page - 1}.` : `${first}.`, title: s.title })
-    s.pages.forEach(() => sectionOf.push(s.title))
   }
 
   const tocPage: Page = {
     key: 'toc',
     elements: toc.flatMap((entry, i) => {
-      const y = 30 + THEME_FRAME[t].top + i * (150 / Math.max(toc.length, 7))
+      const y = 30 + i * (150 / Math.max(toc.length, 7))
       return [
         text({ x: 40, y, w: 50, h: 12 }, entry.range, { size: 24, valign: 'middle' }),
         text({ x: 92, y, w: 180, h: 12 }, entry.title, { size: 24, valign: 'middle' })
@@ -588,11 +571,12 @@ export function buildBook(d: BookData): Page[] {
     })
   }
 
-  const pages: Page[] = [coverPage(t, d), tocPage, ...sections.flatMap((s) => s.pages), backCover(t, d)]
+  const pages: Page[] = [coverPage(d), tocPage, ...sections.flatMap((s) => s.pages), backCover(d)]
   return pages.map((p, i) => {
-    const plain = i === 0 || i === pages.length - 1 || p.key.startsWith('section:')
+    const plain = i === 0 || i === pages.length - 1 || p.key.startsWith('section:') || p.key.startsWith('room:')
     const notes = d.notes.filter((n) => n.pageKey === p.key).map(note)
-    return { key: p.key, elements: [...p.elements, ...(plain ? [] : chrome(t, i + 1, sectionOf[i])), ...notes] }
+    const adjusted = applyAdjustments(p, d.adjustments)
+    return { key: p.key, elements: [...adjusted.elements, ...(plain ? [] : footer(i + 1)), ...notes] }
   })
 }
 

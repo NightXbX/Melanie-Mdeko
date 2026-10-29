@@ -37,12 +37,21 @@ Mac cible : **Mac fixe M1, 16 Go, macOS Tahoe 26.x** (26.2.2 déclaré ; un expo
 - `src/main/book/` : `charte.ts` (mesures relevées sur ses PDF, en mm), `layout.ts` (pages = éléments positionnés : textes, images, formes, liens ; sommaire calculé), `html.ts` (aperçu et PDF, Poppins intégrée via @fontsource), `pptx.ts` (PptxGenJS : chaque élément est natif et modifiable), `data.ts` (assemblage depuis la base), `export.ts` (PDF imprimé par Chromium, boîte d'enregistrement, dernier dossier mémorisé).
 - **Une seule mise en page pour les deux formats** : modifier `layout.ts` change le PDF et le PPTX à l'identique.
 - Shopping list modernisée : une page par besoin (« Mon choix » en grand + 3 propositions, les suivantes sur des pages « suite » de 8 ; nombre illimité), « Voir le produit › » cliquable, puis une page « Récapitulatif de mes choix » avec le total (hors prix au m², au rouleau ou sur devis).
-- **Trois styles** au choix par projet (`projects.book_theme`) : Classique (le sien), Épuré, Contemporain. Même police, sobres, sans aplats (peu d'encre) ; rendus 3D toujours pleine largeur. Intercalaires **horizontaux et numérotés** (les titres verticaux étaient illisibles).
+- **Un seul style : Contemporain** (Classique et Épuré retirés ; la migration 004 met tous les projets en Contemporain, la colonne `projects.book_theme` n'est plus lue). Sobre, sans aplats sauf le disque de la 4e de couverture et les échantillons de teintes ; rendus 3D pleine largeur. Intercalaires **horizontaux et numérotés**, sans pied de page.
+- Couverture : « DESIGN BOOK », **m·deko en grand au centre**, client et mois en bas. 4e de couverture : grand disque taupe (logo, nom, coordonnées), QR code « Laisser un avis » posé sur son bord.
+- Teintes : section « Teintes et couleurs », **nuancier façon architecte** (grands rectangles numérotés, nom, référence, code couleur ; une marque par page). Marque par défaut : « Teintes et couleurs » (`DEFAULT_PAINT_BRAND`, ancien « Autre »).
 - **Shopping list par pièce** : les pièces de « Vos envies » (`needs.room_id`) rangent les besoins dans l'écran du projet et dans le book (articles sans pièce d'abord, puis un intercalaire par pièce ; le récapitulatif est groupé par pièce). `setRooms` garde l'identifiant des pièces conservées.
-- **Aperçu modifiable** (`BookPreview.tsx`, mêmes pages que le PDF rendues en React) : clic sur un texte (avant-propos, envies, fin, titre de besoin, légende de rendu) pour le changer ; double-clic sur une page pour poser une annotation (`book_notes`), déplaçable par sa poignée. Les textes à saisir vides (`placeholder`) ne sont pas exportés.
+- **Aperçu modifiable** (`BookPreview.tsx`, mêmes pages que le PDF rendues en React) : clic sur un texte pour le changer ; les éléments qui ont un `id` (unique dans la page) se déplacent en les faisant glisser et se redimensionnent par la poignée (une image garde ses proportions), A−/A+ change la taille d'un texte, « Remettre à sa place » / « Remettre la page en place » annulent (les textes écrits restent). Ces réglages vivent dans `book_adjustments` (projet, page, élément) et sont appliqués par `applyAdjustments` dans `layout.ts` : PDF et PPTX identiques. Les textes sans équivalent en base (clé `text:<page>|<élément>`) sont propres au book ; textes de la base : avant-propos, envies, fin, titre de besoin, légende. Les ids d'articles incluent l'id de l'article (`choice:<id>:name`) pour ne pas suivre un autre article. Double-clic : annotation (`book_notes`), déplaçable et redimensionnable comme le reste. Les textes à saisir vides (`placeholder`) ne sont pas exportés.
+- **Plusieurs photos pour « Mon choix »** : `need_images` (vide = première photo de l'article), choisies et rangées dans la fiche du besoin ; jusqu'à 4 dans le book (`photoGrid`).
 - Modèle de page partagé : `src/shared/book.ts` (éléments en mm, clés d'édition, clés de page).
+- Dans le projet : « Créer un nouvel article » (même fiche que la shopping list, `ArticleEditorSheet`) et « Modifier l'article » sur chaque article.
+- **Glisser-déposer partout** (`lib/sortable.ts`) : besoins (y compris d'une pièce à l'autre), propositions (lâchée sur « Mon choix » = devient le choix), pièces, teintes et artisans du projet, photos d'un article, rendus.
 - Alternatives automatiques : même sous-catégorie, prix le plus proche, avec photo de préférence, sans doublon de lien.
 - Réglages (⌘,) : coordonnées, QR code d'avis, textes modèles (`{pieces}` = pièces du projet).
+
+## Vérification de la base (implémentée)
+
+Écran « Vérification » (`src/main/check.ts`, `views/CheckView.tsx`) : `PRAGMA integrity_check` et `foreign_key_check`, emplacement et taille de la base, photos introuvables, produits disparus, doublons d'URL, articles d'un projet à la corbeille, prix inchangés depuis un an, articles sans photo, prix, lien ou catégorie. « Vérifier les liens » ouvre les pages produit (6 à la fois, interruptible) : 404/410 ou renvoi vers l'accueil = disparu ; refus des robots = à vérifier à la main.
 
 ## Dossiers de Mélanie
 
@@ -169,7 +178,7 @@ Une empreinte visuelle de chaque photo est calculée **en local** (petit modèle
 - Assistant IA : demande en langage naturel, image de référence, duel de 2 moteurs, avant/après, Garder ou Réessayer, compteur de dépense.
 - Bouton « Signaler », sauvegarde avant chaque mise à jour, mise à jour intégrée.
 
-**Repoussé à la v0.2 et après** : ressemblance visuelle (CLIP local) pour les alternatives, rubrique Inspirations, vérification des liens en tâche de fond dans l'appli (en attendant, un script côté développeur), préremplissage depuis un lien produit, budget par projet, zone à peindre pour l'IA, signature Apple.
+**Repoussé à la v0.2 et après** : ressemblance visuelle (CLIP local) pour les alternatives, rubrique Inspirations, vérification des liens automatique en tâche de fond (pour l'instant à la demande, écran Vérification), mise à jour automatique des prix, préremplissage depuis un lien produit, budget par projet, zone à peindre pour l'IA, signature Apple.
 
 **Boucle quotidienne** : retour de Mélanie → correction → push → build macOS par GitHub Actions (~10 min) → mise à jour au prochain lancement.
 

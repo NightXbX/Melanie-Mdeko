@@ -2,17 +2,21 @@ import { useState } from 'react'
 import type { ArticleCard as Card } from '@shared/api'
 import { formatPrice } from '@shared/format'
 import type { ProjectNeed, Room } from '@shared/projects'
+import { moved, useSortable } from '../../lib/sortable'
+import { ArticleEditorSheet } from '../ArticleEditorSheet'
 import { Icon } from '../Icon'
 import { ArticlePicker } from './ArticlePicker'
 import type { SectionProps } from './ProjectEditor'
 import { SectionHeader } from './sections'
 
-type Picking = { mode: 'add'; roomId: number | null } | { mode: 'choice'; need: ProjectNeed } | { mode: 'alternative'; need: ProjectNeed } | null
+type Picking = { mode: 'add'; roomId: number | null } | { mode: 'choice'; need: ProjectNeed } | { mode: 'alternative'; need: ProjectNeed }
+// Fiche article ouverte depuis le projet : nouvel article (puis ajouté au projet) ou article à modifier.
+type Editing = { articleId: number | null; then?: Picking } | null
 
 function Mini({ article, big }: { article: Card; big?: boolean }) {
   return (
     <div className={`mini${big ? ' mini-big' : ''}`}>
-      <div className="mini-photo">{article.thumbnailUrl ? <img src={article.thumbnailUrl} alt="" /> : <Icon name="photo" size={24} />}</div>
+      <div className="mini-photo">{article.thumbnailUrl ? <img src={article.thumbnailUrl} alt="" draggable={false} /> : <Icon name="photo" size={24} />}</div>
       <div className="mini-text">
         <span className="card-name">{article.name}</span>
         <span className="card-price">{formatPrice(article.price)}</span>
@@ -22,20 +26,21 @@ function Mini({ article, big }: { article: Card; big?: boolean }) {
   )
 }
 
+const zoneOf = (roomId: number | null) => (roomId === null ? 'sans-piece' : String(roomId))
+
 // Shopping list du projet, rangée par pièce (celles de « Vos envies ») : pour chaque besoin, « Mon choix »
-// et ses autres propositions, modifiables.
+// et ses autres propositions. Tout se range en faisant glisser : les besoins d'une pièce à l'autre,
+// les propositions entre elles ou sur « Mon choix ».
 export function NeedsSection({ project, reload }: SectionProps) {
-  const [picking, setPicking] = useState<Picking>(null)
+  const [picking, setPicking] = useState<Picking | null>(null)
+  const [editing, setEditing] = useState<Editing>(null)
 
   const run = async (action: Promise<unknown>) => {
     await action
     await reload()
   }
 
-  const pick = (id: number) => {
-    const p = picking
-    setPicking(null)
-    if (!p) return
+  const apply = (p: Picking, id: number) => {
     if (p.mode === 'add') void run(window.mdeko.projects.addNeed(project.id, id, p.roomId))
     else if (p.mode === 'choice') void run(window.mdeko.projects.setNeedChoice(p.need.id, id))
     else void run(window.mdeko.projects.setNeedAlternatives(p.need.id, [...p.need.alternatives.map((a) => a.id), id]))
@@ -50,18 +55,151 @@ export function NeedsSection({ project, reload }: SectionProps) {
   ]
   const ordered = groups.flatMap((g) => g.needs)
 
-  const moveUp = (need: ProjectNeed, group: ProjectNeed[]) => {
-    const previous = group[group.indexOf(need) - 1]
-    const ids = ordered.map((n) => n.id)
-    const a = ids.indexOf(previous.id)
-    const b = ids.indexOf(need.id)
-    ;[ids[a], ids[b]] = [ids[b], ids[a]]
-    void run(window.mdeko.projects.reorder('needs', ids))
-  }
+  const needs = useSortable('need', {
+    onDrop: (drop) => {
+      const need = project.needs.find((n) => n.id === drop.id)
+      if (!need) return
+      const target = drop.target === null ? null : project.needs.find((n) => n.id === drop.target)
+      const zone = drop.zone ?? zoneOf(target?.roomId ?? null)
+      const roomId = zone === 'sans-piece' ? null : Number(zone)
+      // Lâché sur la pièce : en fin de pièce.
+      const last = groups.find((g) => zoneOf(g.room?.id ?? null) === zone)?.needs.filter((n) => n.id !== need.id).at(-1)
+      const ids = moved(
+        ordered.map((n) => n.id),
+        drop.target === null ? { ...drop, target: last?.id ?? null, after: true } : drop
+      )
+      void run(
+        (async () => {
+          if (roomId !== need.roomId) await window.mdeko.projects.setNeedRoom(need.id, roomId)
+          await window.mdeko.projects.reorder('needs', ids)
+        })()
+      )
+    }
+  })
 
-  const needCard = (need: ProjectNeed, group: ProjectNeed[]) => (
-    <div key={need.id} className="need">
+  const pickerTitle = (p: Picking) =>
+    p.mode === 'add'
+      ? `Ajouter un article${p.roomId ? ` dans « ${rooms.find((r) => r.id === p.roomId)?.name} »` : ' au projet'}`
+      : p.mode === 'choice'
+        ? 'Remplacer « Mon choix »'
+        : 'Ajouter une proposition'
+
+  const addButtons = (roomId: number | null, label: string) => (
+    <div className="need-add">
+      <button type="button" className="button button-plain" onClick={() => setPicking({ mode: 'add', roomId })}>
+        + {label}
+      </button>
+      <button type="button" className="button button-plain" onClick={() => setEditing({ articleId: null, then: { mode: 'add', roomId } })}>
+        + Créer un nouvel article
+      </button>
+    </div>
+  )
+
+  return (
+    <div className="section">
+      <SectionHeader title="Shopping list">
+        <button type="button" className="button" onClick={() => setEditing({ articleId: null, then: { mode: 'add', roomId: null } })}>
+          <Icon name="plus" size={14} />
+          Nouvel article
+        </button>
+        <button type="button" className="button button-primary" onClick={() => setPicking({ mode: 'add', roomId: null })}>
+          <Icon name="plus" size={14} />
+          Ajouter un article
+        </button>
+      </SectionHeader>
+
+      {!rooms.length && <p className="section-note">Pour ranger les articles par pièce, ajoutez les pièces dans « Vos envies ».</p>}
+      {project.needs.length > 1 && <p className="section-note">Faites glisser un article pour le déplacer, d’une pièce à l’autre si besoin.</p>}
+
+      {project.needs.length === 0 && !rooms.length && (
+        <button type="button" className="drop-zone" onClick={() => setPicking({ mode: 'add', roomId: null })}>
+          <Icon name="bag" size={40} />
+          <span>Choisissez les articles que vous recommandez</span>
+        </button>
+      )}
+
+      {groups.map(({ room, needs: list }) => {
+        const cards = list.map((need) => (
+          <NeedCard
+            key={need.id}
+            need={need}
+            rooms={rooms}
+            drag={needs.item(need.id, zoneOf(need.roomId))}
+            run={run}
+            onPick={setPicking}
+            onEdit={(articleId) => setEditing({ articleId })}
+          />
+        ))
+        return rooms.length ? (
+          <div key={room?.id ?? 'sans-piece'} className="need-room" {...needs.zone(zoneOf(room?.id ?? null))}>
+            <div className="need-room-head">
+              <h3>{room?.name ?? 'Sans pièce'}</h3>
+              {addButtons(room?.id ?? null, `Ajouter un article${room ? ` dans « ${room.name} »` : ''}`)}
+            </div>
+            {list.length === 0 && <p className="section-note">Aucun article pour l’instant : faites-en glisser un ici.</p>}
+            {cards}
+          </div>
+        ) : (
+          <div key="tous" className="need-room" {...needs.zone('sans-piece')}>
+            {cards}
+          </div>
+        )
+      })}
+
+      {picking && (
+        <ArticlePicker
+          title={pickerTitle(picking)}
+          onPick={(id) => {
+            setPicking(null)
+            apply(picking, id)
+          }}
+          onCreate={() => {
+            setPicking(null)
+            setEditing({ articleId: null, then: picking })
+          }}
+          onCancel={() => setPicking(null)}
+        />
+      )}
+      {editing && (
+        <ArticleEditorSheet
+          articleId={editing.articleId}
+          onClose={(savedId) => {
+            const then = editing.then
+            setEditing(null)
+            if (savedId === undefined) return
+            if (then) apply(then, savedId)
+            else void reload()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+interface NeedCardProps {
+  need: ProjectNeed
+  rooms: Room[]
+  drag: ReturnType<ReturnType<typeof useSortable>['item']>
+  run(action: Promise<unknown>): Promise<void>
+  onPick(p: Picking): void
+  onEdit(articleId: number): void
+}
+
+function NeedCard({ need, rooms, drag, run, onPick, onEdit }: NeedCardProps) {
+  const alternatives = useSortable(`alternative:${need.id}`, {
+    onDrop: (drop) => {
+      // Une proposition lâchée sur « Mon choix » devient le choix.
+      if (drop.zone === 'choice') void run(window.mdeko.projects.setNeedChoice(need.id, drop.id))
+      else void run(window.mdeko.projects.setNeedAlternatives(need.id, moved(need.alternatives.map((a) => a.id), drop)))
+    }
+  })
+
+  return (
+    <div className="need" {...drag}>
       <div className="need-head">
+        <span className="grip" title="Faire glisser pour déplacer">
+          <Icon name="grip" size={14} />
+        </span>
         <h3>{need.label ?? need.category ?? 'Article'}</h3>
         <div className="need-actions">
           {rooms.length > 0 && (
@@ -79,10 +217,7 @@ export function NeedsSection({ project, reload }: SectionProps) {
               ))}
             </select>
           )}
-          <button type="button" className="button button-plain" disabled={group[0] === need} onClick={() => moveUp(need, group)}>
-            Monter
-          </button>
-          <button type="button" className="button button-plain" onClick={() => setPicking({ mode: 'choice', need })}>
+          <button type="button" className="button button-plain" onClick={() => onPick({ mode: 'choice', need })}>
             Remplacer
           </button>
           <button type="button" className="button button-plain button-danger" onClick={() => void run(window.mdeko.projects.removeNeed(need.id))}>
@@ -91,18 +226,30 @@ export function NeedsSection({ project, reload }: SectionProps) {
         </div>
       </div>
       <div className="need-body">
-        <div className="need-choice">
+        <div className="need-choice" {...alternatives.zone('choice')}>
           <span className="need-label">Mon choix</span>
-          {need.choice && <Mini article={need.choice} big />}
+          {need.choice && (
+            <>
+              <Mini article={need.choice} big />
+              <button type="button" className="button button-plain need-edit" onClick={() => onEdit(need.choice!.id)}>
+                <Icon name="pencil" size={12} />
+                Modifier l’article
+              </button>
+            </>
+          )}
+          {need.choiceImages.length > 1 && <BookPhotos need={need} run={run} />}
         </div>
         <div className="need-alternatives">
           <span className="need-label">Autres propositions</span>
           {need.alternatives.map((a) => (
-            <div key={a.id} className="need-alternative">
+            <div key={a.id} className="need-alternative" {...alternatives.item(a.id)}>
               <Mini article={a} />
               <div className="need-alt-actions">
                 <button type="button" className="button button-plain" onClick={() => void run(window.mdeko.projects.setNeedChoice(need.id, a.id))}>
                   Choisir
+                </button>
+                <button type="button" className="button button-plain" aria-label="Modifier l’article" onClick={() => onEdit(a.id)}>
+                  <Icon name="pencil" size={12} />
                 </button>
                 <button
                   type="button"
@@ -115,62 +262,42 @@ export function NeedsSection({ project, reload }: SectionProps) {
               </div>
             </div>
           ))}
-          <button type="button" className="button button-plain" onClick={() => setPicking({ mode: 'alternative', need })}>
+          <button type="button" className="button button-plain" onClick={() => onPick({ mode: 'alternative', need })}>
             + Ajouter une proposition
           </button>
         </div>
       </div>
     </div>
   )
+}
 
+// Photos de « Mon choix » montrées dans le book : un clic en ajoute ou en retire une, on les range en les faisant glisser.
+function BookPhotos({ need, run }: { need: ProjectNeed; run(action: Promise<unknown>): Promise<void> }) {
+  const shown = need.bookImageIds.length ? need.bookImageIds : [need.choiceImages[0].id]
+  const save = (ids: number[]) => void run(window.mdeko.projects.setNeedImages(need.id, ids))
+  const photos = useSortable(`photo:${need.id}`, { axis: 'horizontal', onDrop: (drop) => save(moved(shown, drop)) })
+  const ordered = [...shown.map((id) => need.choiceImages.find((i) => i.id === id)!).filter(Boolean), ...need.choiceImages.filter((i) => !shown.includes(i.id))]
   return (
-    <div className="section">
-      <SectionHeader title="Shopping list">
-        <button type="button" className="button button-primary" onClick={() => setPicking({ mode: 'add', roomId: null })}>
-          <Icon name="plus" size={14} />
-          Ajouter un article
-        </button>
-      </SectionHeader>
-
-      {!rooms.length && <p className="section-note">Pour ranger les articles par pièce, ajoutez les pièces dans « Vos envies ».</p>}
-
-      {project.needs.length === 0 && !rooms.length && (
-        <button type="button" className="drop-zone" onClick={() => setPicking({ mode: 'add', roomId: null })}>
-          <Icon name="bag" size={40} />
-          <span>Choisissez les articles que vous recommandez</span>
-        </button>
-      )}
-
-      {groups.map(({ room, needs }) =>
-        rooms.length ? (
-          <div key={room?.id ?? 'sans-piece'} className="need-room">
-            <div className="need-room-head">
-              <h3>{room?.name ?? 'Sans pièce'}</h3>
-              <button type="button" className="button button-plain" onClick={() => setPicking({ mode: 'add', roomId: room?.id ?? null })}>
-                + Ajouter un article{room ? ` dans « ${room.name} »` : ''}
-              </button>
-            </div>
-            {needs.length === 0 && <p className="section-note">Aucun article pour l’instant.</p>}
-            {needs.map((need) => needCard(need, needs))}
-          </div>
-        ) : (
-          needs.map((need) => needCard(need, needs))
-        )
-      )}
-
-      {picking && (
-        <ArticlePicker
-          title={
-            picking.mode === 'add'
-              ? `Ajouter un article${picking.roomId ? ` dans « ${rooms.find((r) => r.id === picking.roomId)?.name} »` : ' au projet'}`
-              : picking.mode === 'choice'
-                ? 'Remplacer « Mon choix »'
-                : 'Ajouter une proposition'
-          }
-          onPick={pick}
-          onCancel={() => setPicking(null)}
-        />
-      )}
+    <div className="need-photos">
+      <span className="need-photos-label">Photos dans le book ({shown.length}{need.choiceImages.length > 4 ? ', 4 au plus' : ''})</span>
+      <div className="need-photos-list drop-horizontal">
+        {ordered.map((img) => {
+          const on = shown.includes(img.id)
+          return (
+            <button
+              key={img.id}
+              type="button"
+              className={`need-photo${on ? ' is-selected' : ''}`}
+              title={on ? 'Retirer du book' : 'Montrer dans le book'}
+              onClick={() => save(on ? shown.filter((id) => id !== img.id) : [...shown, img.id])}
+              {...(on ? photos.item(img.id) : {})}
+            >
+              <img src={img.url} alt="" draggable={false} />
+              {on && <span className="need-photo-number">{shown.indexOf(img.id) + 1}</span>}
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }

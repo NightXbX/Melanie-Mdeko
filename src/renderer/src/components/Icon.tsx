@@ -10,6 +10,9 @@ const PATHS = {
   chevronRight: 'M9 6l6 6-6 6',
   external: 'M14 5h5v5M19 5l-8 8M18 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4',
   photo: 'M4 6h16v12H4zM4 15l4-4 4 4 3-3 5 5M15 9.5h.01',
+  grip: 'M9 6h1M14 6h1M9 12h1M14 12h1M9 18h1M14 18h1',
+  shield: 'M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3ZM9 12l2 2 4-4',
+  pencil: 'M4 20h4L19 9l-4-4L4 16v4ZM13 7l4 4',
   move: 'M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3'
 } as const
 

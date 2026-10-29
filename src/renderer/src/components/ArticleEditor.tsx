@@ -3,6 +3,7 @@ import type { ArticleInput, EditableImage, EditorChoices, PriceKind } from '@sha
 import { parsePriceInput, priceInputText } from '@shared/format'
 import { normalizeUrlInput } from '@shared/url'
 import { hasImages, readDrop, uploadDrop, type DropContent } from '../lib/images'
+import { moved, useSortable } from '../lib/sortable'
 import { Icon } from './Icon'
 
 const PRICE_KINDS: { value: PriceKind; label: string }[] = [
@@ -142,6 +143,15 @@ export function ArticleEditor({ articleId, initialDrop, onClose }: Props) {
   const setMainImage = (img: EditableImage) => form && update({ images: [img, ...form.images.filter((i) => i.id !== img.id)] })
   const removeImage = (img: EditableImage) => form && update({ images: form.images.filter((i) => i.id !== img.id) })
 
+  // Les photos se rangent en les faisant glisser ; la première est la photo principale.
+  const photoOrder = useSortable('editor-photo', {
+    axis: 'horizontal',
+    onDrop: (drop) => {
+      if (!form) return
+      update({ images: moved(form.images.map((i) => i.id), drop).map((id) => form.images.find((i) => i.id === id)!) })
+    }
+  })
+
   if (!form) return <div className="detail" />
 
   return (
@@ -195,11 +205,11 @@ export function ArticleEditor({ articleId, initialDrop, onClose }: Props) {
               <span className="editor-drop-hint">ou cliquez pour en choisir une</span>
             </button>
           )}
-          <div className="detail-thumbs">
+          <div className="detail-thumbs drop-horizontal">
             {form.images.map((img, i) => (
-              <div key={img.id} className={`detail-thumb editor-thumb${i === 0 ? ' is-selected' : ''}`}>
+              <div key={img.id} className={`detail-thumb editor-thumb${i === 0 ? ' is-selected' : ''}`} {...photoOrder.item(img.id)}>
                 <button type="button" className="editor-thumb-main" title="Photo principale" onClick={() => setMainImage(img)}>
-                  <img src={img.url} alt="" />
+                  <img src={img.url} alt="" draggable={false} />
                 </button>
                 <button type="button" className="editor-thumb-remove" aria-label="Retirer la photo" onClick={() => removeImage(img)}>
                   <Icon name="xmark" size={10} />

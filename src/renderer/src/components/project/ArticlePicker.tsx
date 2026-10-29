@@ -4,7 +4,17 @@ import { ArticleCard } from '../ArticleCard'
 import { Icon } from '../Icon'
 
 // Choisir un article de la shopping list (même recherche que l'écran principal).
-export function ArticlePicker({ title, onPick, onCancel }: { title: string; onPick(id: number): void; onCancel(): void }) {
+export function ArticlePicker({
+  title,
+  onPick,
+  onCreate,
+  onCancel
+}: {
+  title: string
+  onPick(id: number): void
+  onCreate?(): void
+  onCancel(): void
+}) {
   const [query, setQuery] = useState('')
   const [items, setItems] = useState<Card[]>([])
   const request = useRef(0)
@@ -24,9 +34,17 @@ export function ArticlePicker({ title, onPick, onCancel }: { title: string; onPi
       <div className="sheet sheet-large" onKeyDown={(e) => e.key === 'Escape' && onCancel()}>
         <div className="sheet-head">
           <h2>{title}</h2>
-          <button type="button" className="button" onClick={onCancel}>
-            Annuler
-          </button>
+          <div className="sheet-actions">
+            {onCreate && (
+              <button type="button" className="button" onClick={onCreate}>
+                <Icon name="plus" size={14} />
+                Créer un nouvel article
+              </button>
+            )}
+            <button type="button" className="button" onClick={onCancel}>
+              Annuler
+            </button>
+          </div>
         </div>
         <label className="search-field picker-search">
           <Icon name="search" size={15} />

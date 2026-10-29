@@ -3,6 +3,10 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { migrate, openDatabase } from './db/database'
 import {
   addNeed,
+  adjustElement,
+  listAdjustments,
+  resetPageAdjustments,
+  setNeedImages,
   addNote,
   editBookText,
   listNotes,
@@ -135,11 +139,38 @@ describe('modifications dans l’aperçu', () => {
     expect(listNotes(db, id)).toEqual([])
   })
 
-  it('enregistre le style du book choisi et ignore un style inconnu', () => {
+  it('garde les ajustements de l’aperçu et les textes propres au book', () => {
     const id = createProject(db, '', 'Durand')
-    updateProject(db, id, { bookTheme: 'epure' })
-    expect(getProject(db, id)!.bookTheme).toBe('epure')
-    updateProject(db, id, { bookTheme: 'inconnu' as never })
-    expect(getProject(db, id)!.bookTheme).toBe('epure')
+    adjustElement(db, id, 'cover', 'logo', { x: 30, y: 70 })
+    adjustElement(db, id, 'cover', 'logo', { size: 90 })
+    editBookText(db, id, 'text:need:4|choice:1:name', 'Fauteuil velours')
+    expect(listAdjustments(db, id)).toEqual({
+      'cover|logo': { x: 30, y: 70, size: 90 },
+      'need:4|choice:1:name': { text: 'Fauteuil velours' }
+    })
+    adjustElement(db, id, 'cover', 'logo', null)
+    expect(Object.keys(listAdjustments(db, id))).toEqual(['need:4|choice:1:name'])
+    // Remettre la page en place garde le texte écrit.
+    adjustElement(db, id, 'need:4', 'choice:1:name', { w: 80 })
+    resetPageAdjustments(db, id, 'need:4')
+    expect(listAdjustments(db, id)).toEqual({ 'need:4|choice:1:name': { text: 'Fauteuil velours' } })
+  })
+
+  it('montre les photos choisies pour « Mon choix », oubliées quand le choix change', () => {
+    const img = db.prepare("INSERT INTO images (rel_path) VALUES ('images/a.jpg'), ('images/b.jpg')")
+    img.run()
+    db.prepare('INSERT INTO article_images (article_id, image_id, sort) VALUES (1, 1, 0), (1, 2, 1)').run()
+    const id = createProject(db, '', 'Durand')
+    const needId = addNeed(db, id, 1)
+    setNeedImages(db, needId, [2, 1])
+    expect(getProject(db, id)!.needs[0].bookImageIds).toEqual([2, 1])
+    expect(getProject(db, id)!.needs[0].choiceImages.map((i) => i.id)).toEqual([1, 2])
+    setNeedChoice(db, needId, 5)
+    expect(getProject(db, id)!.needs[0].bookImageIds).toEqual([])
+  })
+
+  it('range les teintes sans marque dans « Teintes et couleurs »', () => {
+    createPaint(db, { brand: ' ', name: 'Lin', reference: null, hex: '#eeeeee' })
+    expect(listPaints(db)[0].brand).toBe('Teintes et couleurs')
   })
 })

@@ -23,6 +23,7 @@ export function registerProjectsIpc(db: DatabaseSync, paths: DataPaths): void {
     setNeedRoom: (_w, needId, roomId) => p.setNeedRoom(db, needId, roomId),
     setNeedChoice: (_w, needId, articleId) => p.setNeedChoice(db, needId, articleId),
     setNeedAlternatives: (_w, needId, ids) => p.setNeedAlternatives(db, needId, ids),
+    setNeedImages: (_w, needId, ids) => p.setNeedImages(db, needId, ids),
     removeNeed: (_w, needId) => p.removeNeed(db, needId),
     listPaints: () => p.listPaints(db),
     createPaint: (_w, paint) => p.createPaint(db, paint),
@@ -34,7 +35,9 @@ export function registerProjectsIpc(db: DatabaseSync, paths: DataPaths): void {
     pages: (_w, id) => bookPages(db, paths, id),
     editText: (_w, id, key, text) => p.editBookText(db, id, key, text),
     addNote: (_w, id, pageKey, x, y) => p.addNote(db, id, pageKey, x, y),
-    moveNote: (_w, noteId, x, y) => p.moveNote(db, noteId, x, y),
+    moveNote: (_w, noteId, x, y, w) => p.moveNote(db, noteId, x, y, w),
+    adjust: (_w, id, pageKey, elementId, patch) => p.adjustElement(db, id, pageKey, elementId, patch),
+    resetPage: (_w, id, pageKey) => p.resetPageAdjustments(db, id, pageKey),
     deleteNote: (_w, noteId) => p.deleteNote(db, noteId),
     export: (_w, id, format) => exportBook(db, paths, id, format),
     openFolder: async (_w, id) => {

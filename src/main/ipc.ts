@@ -25,6 +25,7 @@ import {
 } from './article-edit'
 import { articleFacets, getArticle, searchArticles } from './articles'
 import { listBackups } from './backup'
+import { checkDatabase, checkLinks, type LinkResponse } from './check'
 import { importPdf } from './import'
 import { schemaVersion } from './db/database'
 import type { DataPaths } from './paths'
@@ -93,6 +94,24 @@ export function registerIpc(db: DatabaseSync, paths: DataPaths, backupNow: () =>
     }
   })
 
+  // Vérification de la base, et des liens en ligne (un passage à la fois, interruptible).
+  ipcMain.handle(IPC.checkDatabase, () => checkDatabase(db, paths))
+  ipcMain.handle(IPC.showDatabase, () => shell.showItemInFolder(paths.database))
+  let linkCheck: { stop: boolean } | null = null
+  ipcMain.handle(IPC.checkLinks, async (e) => {
+    if (linkCheck) throw new Error('La vérification des liens est déjà en cours.')
+    const run = { stop: false }
+    linkCheck = run
+    try {
+      return await checkLinks(db, fetchLink, (p) => !e.sender.isDestroyed() && e.sender.send(IPC.linkProgress, p), () => run.stop)
+    } finally {
+      linkCheck = null
+    }
+  })
+  ipcMain.handle(IPC.stopLinkCheck, () => {
+    if (linkCheck) linkCheck.stop = true
+  })
+
   // Boîte de confirmation native (feuille attachée à la fenêtre sur Mac).
   ipcMain.handle(IPC.confirm, async (e, message: string, detail: string, action: string) => {
     const win = BrowserWindow.fromWebContents(e.sender)
@@ -116,4 +135,27 @@ async function downloadImage(url: string): Promise<DownloadedImage> {
   const bytes = new Uint8Array(await response.arrayBuffer())
   if (bytes.byteLength > MAX_DOWNLOAD_BYTES) throw new Error('Cette image est trop lourde.')
   return { bytes, mimeType }
+}
+
+// Ouvre la page du produit comme un navigateur (beaucoup de sites refusent les requêtes sans en-têtes).
+async function fetchLink(url: string): Promise<LinkResponse> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 20000)
+  try {
+    const response = await net.fetch(url, {
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
+        Accept: 'text/html,application/xhtml+xml',
+        'Accept-Language': 'fr-FR,fr;q=0.9'
+      }
+    })
+    void response.body?.cancel().catch(() => undefined)
+    return { status: response.status, finalUrl: response.url || null }
+  } catch {
+    return { status: null, finalUrl: null }
+  } finally {
+    clearTimeout(timer)
+  }
 }

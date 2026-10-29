@@ -1,5 +1,5 @@
 // Contrat entre le processus principal et l'interface (exposé via le preload).
-import type { Page } from './book'
+import type { BookAdjustment, Page } from './book'
 import type {
   Artisan,
   BookFormat,
@@ -103,6 +103,7 @@ export interface ProjectsApi {
   setNeedRoom(needId: number, roomId: number | null): Promise<void>
   setNeedChoice(needId: number, articleId: number): Promise<void>
   setNeedAlternatives(needId: number, articleIds: number[]): Promise<void>
+  setNeedImages(needId: number, imageIds: number[]): Promise<void>
   removeNeed(needId: number): Promise<void>
   listPaints(): Promise<Paint[]>
   createPaint(paint: Omit<Paint, 'id' | 'promoCode'>): Promise<number>
@@ -114,7 +115,9 @@ export interface ProjectsApi {
   pages(id: number): Promise<Page[]>
   editText(id: number, key: string, text: string): Promise<void>
   addNote(id: number, pageKey: string, x: number, y: number): Promise<number>
-  moveNote(noteId: number, x: number, y: number): Promise<void>
+  moveNote(noteId: number, x: number, y: number, w?: number): Promise<void>
+  adjust(id: number, pageKey: string, elementId: string, patch: BookAdjustment | null): Promise<void>
+  resetPage(id: number, pageKey: string): Promise<void>
   deleteNote(noteId: number): Promise<void>
   export(id: number, format: BookFormat): Promise<string>
   openFolder(id: number): Promise<void>
@@ -185,6 +188,31 @@ export interface ImportSummary {
   needs: number
 }
 
+// Vérification de la base (écran « Vérification »).
+export interface CheckGroup {
+  id: string
+  severity: 'error' | 'warning' | 'info'
+  title: string
+  description: string
+  count: number
+  articles: ArticleCard[] // les premiers seulement
+}
+
+export interface CheckReport {
+  checkedAt: string
+  database: { path: string; sizeBytes: number; ok: boolean; problems: string[] }
+  articles: number
+  images: number
+  links: { toCheck: number; ok: number }
+  groups: CheckGroup[]
+}
+
+export interface LinkCheckProgress {
+  done: number
+  total: number
+  gone: number
+}
+
 export interface MdekoApi {
   projects: ProjectsApi
   getAppInfo(): Promise<AppInfo>
@@ -209,6 +237,11 @@ export interface MdekoApi {
   importPdf(path?: string): Promise<ImportSummary | null>
   onImportProgress(listener: (page: number, total: number) => void): () => void
   pathForFile(file: File): string
+  checkDatabase(): Promise<CheckReport>
+  checkLinks(): Promise<LinkCheckProgress>
+  stopLinkCheck(): Promise<void>
+  onLinkProgress(listener: (progress: LinkCheckProgress) => void): () => void
+  showDatabase(): Promise<void>
 }
 
 export const IPC = {
@@ -233,13 +266,18 @@ export const IPC = {
   menu: 'menu:command',
   importPdf: 'import:pdf',
   importProgress: 'import:progress',
+  checkDatabase: 'check:database',
+  checkLinks: 'check:links',
+  stopLinkCheck: 'check:stop-links',
+  linkProgress: 'check:link-progress',
+  showDatabase: 'app:show-database',
   // Projets : un canal unique, la méthode appelée est passée en premier argument.
   projects: 'projects:call'
 } as const
 
 export const PROJECT_METHODS = [
   'list', 'create', 'get', 'update', 'trash', 'restore', 'setRooms', 'addRenders', 'updateRender', 'removeRender',
-  'reorder', 'addNeed', 'setNeedRoom', 'setNeedChoice', 'setNeedAlternatives', 'removeNeed', 'listPaints', 'createPaint',
+  'reorder', 'addNeed', 'setNeedRoom', 'setNeedChoice', 'setNeedAlternatives', 'setNeedImages', 'removeNeed', 'listPaints', 'createPaint',
   'listArtisans', 'saveArtisan', 'setLinks', 'getSettings', 'saveSettings', 'pages', 'editText', 'addNote', 'moveNote',
-  'deleteNote', 'export', 'openFolder'
+  'deleteNote', 'adjust', 'resetPage', 'export', 'openFolder'
 ] as const satisfies readonly (keyof ProjectsApi)[]

@@ -1,6 +1,6 @@
 import { Icon, type IconName } from './Icon'
 
-export type View = 'shopping' | 'projects' | 'trash'
+export type View = 'shopping' | 'projects' | 'check' | 'trash'
 
 interface Props {
   current: View
@@ -28,7 +28,10 @@ export function Sidebar({ current, onSelect }: Props) {
           {item('shopping', 'bag', 'Shopping list')}
           {item('projects', 'folder', 'Projets')}
         </div>
-        <div className="sidebar-section sidebar-bottom">{item('trash', 'trash', 'Corbeille')}</div>
+        <div className="sidebar-section sidebar-bottom">
+          {item('check', 'shield', 'Vérification')}
+          {item('trash', 'trash', 'Corbeille')}
+        </div>
       </nav>
     </aside>
   )

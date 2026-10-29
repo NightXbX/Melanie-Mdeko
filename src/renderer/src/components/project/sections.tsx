@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import type { Artisan, Paint } from '@shared/projects'
+import { DEFAULT_PAINT_BRAND, type Artisan, type Paint } from '@shared/projects'
 import { useApp } from '../../app-context'
 import { useAutosave } from '../../lib/autosave'
+import { moved, useSortable } from '../../lib/sortable'
 import { Icon } from '../Icon'
 import type { SectionProps } from './ProjectEditor'
 
@@ -95,6 +96,12 @@ export function WishesSection({ project, settings, reload }: SectionProps) {
   useAutosave(rooms, (r) => void window.mdeko.projects.setRooms(project.id, r).then(reload), 300)
   useAutosave(text, (t) => void window.mdeko.projects.update(project.id, { texts: { ...project.texts, wishes: t } }).then(reload))
 
+  // Les pièces se rangent en les faisant glisser : c'est l'ordre de la shopping list dans le book.
+  const order = useSortable('room', {
+    axis: 'horizontal',
+    onDrop: (drop) => setRooms(moved(rooms.map((_, i) => i), drop).map((i) => rooms[i]))
+  })
+
   const addRoom = (name: string) => {
     const n = name.trim().replace(/,$/, '')
     if (n && !rooms.some((r) => r.toLowerCase() === n.toLowerCase())) setRooms([...rooms, n])
@@ -106,9 +113,9 @@ export function WishesSection({ project, settings, reload }: SectionProps) {
       <SectionHeader title="Vos envies" />
       <div className="field">
         <span>Pièces concernées</span>
-        <div className="tags">
-          {rooms.map((r) => (
-            <span key={r} className="tag">
+        <div className="tags drop-horizontal">
+          {rooms.map((r, i) => (
+            <span key={r} className="tag" {...order.item(i)}>
               {r}
               <button type="button" aria-label={`Retirer ${r}`} onClick={() => setRooms(rooms.filter((x) => x !== r))}>
                 <Icon name="xmark" size={9} />
@@ -189,10 +196,16 @@ export function PaintsSection({ project, reload }: SectionProps) {
     await reload()
   }
 
+  const order = useSortable('paint', {
+    axis: 'horizontal',
+    onDrop: (drop) => void window.mdeko.projects.setLinks(project.id, 'project_paints', moved(selected, drop)).then(reload)
+  })
+
   const brands = [...new Set(paints.map((p) => p.brand))]
+  const chosen = selected.map((id) => paints.find((p) => p.id === id)).filter((p) => p !== undefined)
   return (
     <div className="section">
-      <SectionHeader title="Couleurs">
+      <SectionHeader title="Teintes et couleurs">
         <button type="button" className="button" onClick={() => setAdding(true)}>
           <Icon name="plus" size={14} />
           Nouvelle teinte
@@ -207,6 +220,24 @@ export function PaintsSection({ project, reload }: SectionProps) {
             if (id) await toggle(id)
           }}
         />
+      )}
+      {chosen.length > 0 && (
+        <div className="paint-group">
+          <h3>Dans ce design book</h3>
+          <p className="section-note">Faites glisser une teinte pour changer l’ordre du nuancier.</p>
+          <div className="paint-grid drop-horizontal">
+            {chosen.map((p) => (
+              <div key={p.id} className="paint is-selected" {...order.item(p.id)}>
+                <span className="paint-swatch" style={{ background: p.hex ?? '#fff' }} />
+                <span className="paint-name">{p.name}</span>
+                {p.reference && <span className="paint-ref">{p.reference}</span>}
+                <button type="button" className="paint-remove" aria-label={`Retirer ${p.name}`} onClick={() => void toggle(p.id)}>
+                  <Icon name="xmark" size={9} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
       {brands.map((brand) => (
         <div key={brand} className="paint-group">
@@ -234,7 +265,7 @@ export function PaintsSection({ project, reload }: SectionProps) {
 }
 
 function NewPaintForm({ brands, onDone }: { brands: string[]; onDone(id: number | null): void }) {
-  const [paint, setPaint] = useState({ brand: brands[0] ?? '', name: '', reference: '', hex: '#e8e2d6' })
+  const [paint, setPaint] = useState({ brand: brands[0] ?? DEFAULT_PAINT_BRAND, name: '', reference: '', hex: '#e8e2d6' })
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     if (!paint.name.trim()) return
@@ -290,6 +321,11 @@ export function ArtisansSection({ project, reload }: SectionProps) {
     await reload()
   }
 
+  const order = useSortable('artisan', {
+    onDrop: (drop) => void window.mdeko.projects.setLinks(project.id, 'project_artisans', moved(selected, drop)).then(reload)
+  })
+  const chosen = selected.map((id) => artisans.find((a) => a.id === id)).filter((a) => a !== undefined)
+
   const save = async (e: FormEvent) => {
     e.preventDefault()
     if (!editing?.trade.trim() || !editing.name.trim()) return
@@ -333,6 +369,29 @@ export function ArtisansSection({ project, reload }: SectionProps) {
             </button>
           </div>
         </form>
+      )}
+      {chosen.length > 0 && (
+        <>
+          <h3 className="section-subtitle">Dans ce design book</h3>
+          {chosen.length > 1 && <p className="section-note">Faites glisser un artisan pour changer l’ordre.</p>}
+          <ul className="artisan-list">
+            {chosen.map((a) => (
+              <li key={a.id} {...order.item(a.id)}>
+                <span className="grip">
+                  <Icon name="grip" size={14} />
+                </span>
+                <span className="artisan-name">
+                  <strong>{a.trade}</strong> · {a.name}
+                  {a.city ? ` (${a.city})` : ''}
+                </span>
+                <button type="button" className="button button-plain" onClick={() => void toggle(a.id)}>
+                  Retirer
+                </button>
+              </li>
+            ))}
+          </ul>
+          <h3 className="section-subtitle">Votre carnet</h3>
+        </>
       )}
       <ul className="artisan-list">
         {artisans.map((a) => (

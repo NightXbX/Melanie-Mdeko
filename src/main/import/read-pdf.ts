@@ -1,6 +1,7 @@
 // Lecture d'un design book ou d'une shopping list PDF de Mélanie (même logique que
 // tools/migration/extraire_shopping_list.py, avec MuPDF en WebAssembly).
 import type * as Mupdf from 'mupdf'
+import { DEFAULT_PAINT_BRAND } from '@shared/projects'
 import { category, cle, paintName } from './rules'
 
 type MupdfModule = typeof Mupdf
@@ -296,7 +297,7 @@ function readPaints(mupdf: MupdfModule, d: PageData) {
   const all = d.lines.map((l) => l.text).join(' ')
   const promo = /code\s*promo\s*:\s*(\S+)/i.exec(all)?.[1] ?? null
   const key = cle(all)
-  const brand = key.includes('farrow') || key.includes('forrow') ? 'Farrow & Ball' : promo || key.includes('bilboquet') ? 'Bilbo Quet Deco' : 'Autre'
+  const brand = key.includes('farrow') || key.includes('forrow') ? 'Farrow & Ball' : promo || key.includes('bilboquet') ? 'Bilbo Quet Deco' : DEFAULT_PAINT_BRAND
   // Pastilles : disques dessinés, ou petites images carrées (couleur moyenne).
   const swatches: { x0: number; y0: number; x1: number; y1: number; hex: string }[] = [...d.discs]
   for (const i of d.images) {

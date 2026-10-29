@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import type { ArticleCard } from '@shared/api'
 import { formatPrice } from '@shared/format'
-import { getProject, getSettings, listArtisans, listNotes, listPaints, projectTitle, wishesText } from '../projects'
+import { getProject, getSettings, listAdjustments, listArtisans, listNotes, listPaints, projectTitle, wishesText } from '../projects'
 import type { BookArticle, BookData, ImageRef } from './layout'
 
 const MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
@@ -25,19 +25,29 @@ function imageRef(db: DatabaseSync, dataRoot: string, where: string, value: numb
   }
 }
 
-function bookArticle(db: DatabaseSync, dataRoot: string, card: ArticleCard): BookArticle {
+// Photos de « Mon choix » retenues pour le book (need_images), sinon la première photo de l'article.
+function bookArticle(db: DatabaseSync, dataRoot: string, card: ArticleCard, needId: number | null = null): BookArticle {
   const a = db.prepare('SELECT url FROM articles WHERE id = ?').get(card.id) as { url: string | null }
-  const firstImage = db
-    .prepare('SELECT image_id FROM article_images WHERE article_id = ? ORDER BY sort LIMIT 1')
-    .get(card.id) as { image_id: number } | undefined
+  const ids = (db.prepare('SELECT image_id FROM article_images WHERE article_id = ? ORDER BY sort').all(card.id) as { image_id: number }[]).map(
+    (r) => r.image_id
+  )
+  const chosen =
+    needId === null
+      ? []
+      : (db.prepare('SELECT image_id FROM need_images WHERE need_id = ? ORDER BY sort').all(needId) as { image_id: number }[])
+          .map((r) => r.image_id)
+          .filter((id) => ids.includes(id))
+  const images = (chosen.length ? chosen : ids.slice(0, 1)).map((id) => imageRef(db, dataRoot, 'id', id)).filter((i) => i !== null)
   return {
+    id: card.id,
     name: card.name,
     price: formatPrice(card.price),
     priceCents: card.price.cents,
     summable: card.price.cents !== null && (card.price.kind === 'fixed' || card.price.kind === 'from' || card.price.kind === 'unknown'),
     supplier: card.supplier,
     url: a.url,
-    image: firstImage ? imageRef(db, dataRoot, 'id', firstImage.image_id) : null
+    image: images[0] ?? null,
+    images
   }
 }
 
@@ -62,7 +72,6 @@ export function bookData(db: DatabaseSync, dataRoot: string, projectId: number):
   const artisansById = new Map(listArtisans(db).map((a) => [a.id, a]))
 
   return {
-    theme: project.bookTheme,
     clientLabel: projectTitle(project.clientTitle, project.clientName),
     dateLabel: dateLabel(project.bookDate),
     designerName: settings.designerName,
@@ -90,7 +99,7 @@ export function bookData(db: DatabaseSync, dataRoot: string, projectId: number):
           id: n.id,
           title: n.label ?? n.category ?? 'Shopping list',
           room: project.rooms.find((r) => r.id === roomId) ?? null,
-          choice: n.choice ? bookArticle(db, dataRoot, n.choice) : null,
+          choice: n.choice ? bookArticle(db, dataRoot, n.choice, n.id) : null,
           alternatives: n.alternatives.map((a) => bookArticle(db, dataRoot, a))
         }))
     ),
@@ -99,6 +108,7 @@ export function bookData(db: DatabaseSync, dataRoot: string, projectId: number):
       .map((id) => artisansById.get(id))
       .filter((a) => a !== undefined)
       .map((a) => ({ trade: a.trade, name: a.name, city: a.city, phone: a.phone })),
-    notes: listNotes(db, projectId)
+    notes: listNotes(db, projectId),
+    adjustments: listAdjustments(db, projectId)
   }
 }
