@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import type { DatabaseSync } from 'node:sqlite'
 import { app, BrowserWindow, dialog, ipcMain, net, shell } from 'electron'
 import {
@@ -7,6 +8,7 @@ import {
   type ArticleInput,
   type ArticleQuery,
   type DownloadedImage,
+  type ImportSummary,
   type ImageUpload,
   type UndoResult
 } from '@shared/api'
@@ -23,6 +25,7 @@ import {
 } from './article-edit'
 import { articleFacets, getArticle, searchArticles } from './articles'
 import { listBackups } from './backup'
+import { importPdf } from './import'
 import { schemaVersion } from './db/database'
 import type { DataPaths } from './paths'
 
@@ -67,6 +70,27 @@ export function registerIpc(db: DatabaseSync, paths: DataPaths, backupNow: () =>
     if (!entry) return null
     entry.undo()
     return { label: entry.label, articleId: entry.articleId }
+  })
+
+  // Import d'un design book ou d'une shopping list PDF (un seul à la fois).
+  let importing = false
+  ipcMain.handle(IPC.importPdf, async (e, path?: string): Promise<ImportSummary | null> => {
+    if (importing) throw new Error('Un import est déjà en cours.')
+    let file = path
+    if (!file) {
+      const win = BrowserWindow.fromWebContents(e.sender)
+      const options = { title: 'Importer un design book ou une shopping list', properties: ['openFile' as const], filters: [{ name: 'PDF', extensions: ['pdf'] }] }
+      const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
+      if (result.canceled || !result.filePaths[0]) return null
+      file = result.filePaths[0]
+    }
+    if (!/\.pdf$/i.test(file)) throw new Error('Choisissez un fichier PDF.')
+    importing = true
+    try {
+      return await importPdf(db, paths.root, new Uint8Array(readFileSync(file)), (page, total) => e.sender.send(IPC.importProgress, page, total))
+    } finally {
+      importing = false
+    }
   })
 
   // Boîte de confirmation native (feuille attachée à la fenêtre sur Mac).

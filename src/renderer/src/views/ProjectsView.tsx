@@ -18,7 +18,13 @@ function byYear(projects: ProjectSummary[]): [string, ProjectSummary[]][] {
   return [...groups.entries()]
 }
 
-export function ProjectsView({ newProjectSignal }: { newProjectSignal: number }) {
+interface Props {
+  newProjectSignal: number
+  openRequest: { id: number } | null
+  onImport(path?: string): void
+}
+
+export function ProjectsView({ newProjectSignal, openRequest, onImport }: Props) {
   const { dataVersion } = useApp()
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null)
   const [openId, setOpenId] = useState<number | null>(null)
@@ -27,6 +33,11 @@ export function ProjectsView({ newProjectSignal }: { newProjectSignal: number })
   useEffect(() => {
     void window.mdeko.projects.list().then(setProjects)
   }, [dataVersion, openId])
+
+  // Projet à ouvrir (par exemple juste après un import).
+  useEffect(() => {
+    if (openRequest) setOpenId(openRequest.id)
+  }, [openRequest])
 
   useEffect(() => {
     if (newProjectSignal) {
@@ -40,12 +51,26 @@ export function ProjectsView({ newProjectSignal }: { newProjectSignal: number })
   return (
     <>
       <Toolbar title="Projets">
+        <button type="button" className="button" onClick={() => onImport()}>
+          Importer…
+        </button>
         <button type="button" className="button button-primary" onClick={() => setCreating(true)}>
           <Icon name="plus" size={14} />
           Nouveau projet
         </button>
       </Toolbar>
-      <div className="content-body">
+      <div
+        className="content-body"
+        onDragOver={(e) => {
+          if ([...e.dataTransfer.items].some((i) => i.type === 'application/pdf')) e.preventDefault()
+        }}
+        onDrop={(e) => {
+          const pdf = [...e.dataTransfer.files].find((f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name))
+          if (!pdf) return
+          e.preventDefault()
+          onImport(window.mdeko.pathForFile(pdf))
+        }}
+      >
         {projects?.length === 0 && (
           <div className="projects-grid">
             <button type="button" className="project-card project-new" onClick={() => setCreating(true)}>

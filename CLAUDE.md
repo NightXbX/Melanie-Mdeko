@@ -47,6 +47,13 @@ Mac cible : **Mac fixe M1, 16 Go, macOS Tahoe 26.x** (26.2.2 déclaré ; un expo
 
 `~/Documents/Melanie Mdeko/` ne montre que **Projets/AAAA/<client>/** (design books exportés automatiquement, datés, jamais écrasés) et **Fichiers de l’application/** (base, images, sauvegardes). Une ancienne organisation est rangée automatiquement au démarrage (`paths.ts`).
 
+## Import dans l'appli (implémenté)
+
+- Projets › « Importer… », dépôt d'un PDF sur la liste, ou Fichier › Importer (⌘I) : un design book devient un projet (client, date, pièces, rendus, besoins par sous-catégorie, teintes, artisans) et ses nouveaux articles rejoignent la shopping list ; une shopping list seule ajoute ses articles.
+- `src/main/import/` : `read-pdf.ts` (lecture par mupdf, en WASM, sans module natif), `rules.ts` (classement, mêmes listes que `tools/migration` via `src/shared/import-rules.json`), `apply.ts` (doublons : URL nettoyée, ou même nom et photo proche), `index.ts` (une seule transaction : en cas d'erreur, rien n'est modifié).
+- mupdf est sous licence **AGPL-3.0** (compatible avec le dépôt public). La CI vérifie que `mupdf-wasm.wasm` est bien dans le paquet.
+- Test d'import réel : copier un design book sous `ressources/design-book-test.pdf` (jamais versionné).
+
 ## Installation chez Mélanie (données)
 
 1. `python tools/migration/extraire_shopping_list.py "<shopping list>.pdf" <dossier neuf>`

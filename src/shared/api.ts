@@ -172,7 +172,17 @@ export interface UndoResult {
   articleId: number
 }
 
-export type MenuCommand = 'undo' | 'new-article' | 'new-project' | 'settings'
+export type MenuCommand = 'undo' | 'new-article' | 'new-project' | 'settings' | 'import'
+
+// Bilan d'un import de PDF (design book ou shopping list).
+export interface ImportSummary {
+  projectId: number | null
+  projectTitle: string | null
+  added: number
+  reused: number
+  renders: number
+  needs: number
+}
 
 export interface MdekoApi {
   projects: ProjectsApi
@@ -195,6 +205,9 @@ export interface MdekoApi {
   undo(): Promise<UndoResult | null>
   confirm(message: string, detail: string, action: string): Promise<boolean>
   onMenu(listener: (command: MenuCommand) => void): () => void
+  importPdf(path?: string): Promise<ImportSummary | null>
+  onImportProgress(listener: (page: number, total: number) => void): () => void
+  pathForFile(file: File): string
 }
 
 export const IPC = {
@@ -217,6 +230,8 @@ export const IPC = {
   undo: 'app:undo',
   confirm: 'app:confirm',
   menu: 'menu:command',
+  importPdf: 'import:pdf',
+  importProgress: 'import:progress',
   // Projets : un canal unique, la méthode appelée est passée en premier argument.
   projects: 'projects:call'
 } as const

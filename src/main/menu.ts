@@ -41,6 +41,7 @@ export function buildMenu(actions: MenuActions): void {
       submenu: [
         { label: 'Nouvel article', accelerator: 'CmdOrCtrl+N', click: () => send('new-article') },
         { label: 'Nouveau projet', accelerator: 'Shift+CmdOrCtrl+N', click: () => send('new-project') },
+        { label: 'Importer un design book ou une shopping list…', accelerator: 'CmdOrCtrl+I', click: () => send('import') },
         sep,
         ...(isMac ? [] : [{ label: 'Réglages…', accelerator: 'Ctrl+,', click: () => send('settings') }, sep]),
         { label: 'Faire une sauvegarde maintenant', click: actions.backupNow },

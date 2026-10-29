@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
 import { IPC, PROJECT_METHODS, type MdekoApi, type MenuCommand, type ProjectsApi } from '@shared/api'
 
 const projects = Object.fromEntries(
@@ -29,7 +29,15 @@ const api: MdekoApi = {
     const handler = (_e: IpcRendererEvent, command: MenuCommand) => listener(command)
     ipcRenderer.on(IPC.menu, handler)
     return () => ipcRenderer.removeListener(IPC.menu, handler)
-  }
+  },
+  importPdf: (path) => ipcRenderer.invoke(IPC.importPdf, path),
+  onImportProgress: (listener) => {
+    const handler = (_e: IpcRendererEvent, page: number, total: number) => listener(page, total)
+    ipcRenderer.on(IPC.importProgress, handler)
+    return () => ipcRenderer.removeListener(IPC.importProgress, handler)
+  },
+  // Chemin d'un fichier glissé depuis le Finder (le PDF à importer).
+  pathForFile: (file) => webUtils.getPathForFile(file)
 }
 
 contextBridge.exposeInMainWorld('mdeko', api)

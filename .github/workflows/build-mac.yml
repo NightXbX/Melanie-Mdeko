@@ -38,6 +38,10 @@ jobs:
           codesign --verify --deep --strict --verbose=2 release/mac-arm64/Mdeko.app
           codesign -dv release/mac-arm64/Mdeko.app
 
+      - name: Contrôle du contenu (lecteur PDF embarqué)
+        run: |
+          node -e "const l = require('@electron/asar').listPackage('release/mac-arm64/Mdeko.app/Contents/Resources/app.asar'); if (!l.some((f) => f.endsWith('mupdf-wasm.wasm'))) { console.error('mupdf absent du paquet'); process.exit(1) } console.log('mupdf embarqué')"
+
       - uses: actions/upload-artifact@v4
         with:
           name: Mdeko-mac-arm64

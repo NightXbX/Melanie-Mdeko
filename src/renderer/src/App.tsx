@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AppProvider } from './app-context'
+import { ImportSheet } from './components/ImportSheet'
 import { SettingsSheet } from './components/SettingsSheet'
 import { Sidebar, type View } from './components/Sidebar'
 import { ProjectsView } from './views/ProjectsView'
@@ -11,6 +12,8 @@ export function App() {
   const [newArticleSignal, setNewArticleSignal] = useState(0)
   const [newProjectSignal, setNewProjectSignal] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [importing, setImporting] = useState<{ path?: string } | null>(null)
+  const [openProject, setOpenProject] = useState<{ id: number } | null>(null)
 
   // Commandes des menus : Nouvel article (⌘N), Nouveau projet (⇧⌘N), Réglages (⌘,).
   useEffect(
@@ -24,6 +27,8 @@ export function App() {
           setNewProjectSignal((n) => n + 1)
         } else if (command === 'settings') {
           setSettingsOpen(true)
+        } else if (command === 'import') {
+          setImporting({})
         }
       }),
     []
@@ -35,11 +40,24 @@ export function App() {
         <Sidebar current={view} onSelect={setView} />
         <main className="content">
           {view === 'shopping' && <ShoppingListView newArticleSignal={newArticleSignal} />}
-          {view === 'projects' && <ProjectsView newProjectSignal={newProjectSignal} />}
+          {view === 'projects' && (
+            <ProjectsView newProjectSignal={newProjectSignal} openRequest={openProject} onImport={(path) => setImporting({ path })} />
+          )}
           {view === 'trash' && <TrashView />}
         </main>
       </div>
       {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
+      {importing && (
+        <ImportSheet
+          path={importing.path}
+          onClose={() => setImporting(null)}
+          onOpenProject={(id) => {
+            setImporting(null)
+            setView('projects')
+            setOpenProject({ id })
+          }}
+        />
+      )}
     </AppProvider>
   )
 }
