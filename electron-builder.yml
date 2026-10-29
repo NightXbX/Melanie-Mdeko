@@ -1,0 +1,30 @@
+appId: com.mdeko.app
+productName: Mdeko
+copyright: m·deko
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - package.json
+npmRebuild: false
+asar: true
+artifactName: ${productName}-${version}-${arch}.${ext}
+mac:
+  target:
+    - target: dmg
+      arch: arm64
+    - target: zip
+      arch: arm64
+  category: public.app-category.productivity
+  minimumSystemVersion: '14.0'
+  # Signature ad hoc : pas de compte Apple Developer pendant le test.
+  identity: '-'
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  extendInfo:
+    CFBundleDevelopmentRegion: fr
+    LSHasLocalizedDisplayName: false
+dmg:
+  title: Mdeko
+publish: null

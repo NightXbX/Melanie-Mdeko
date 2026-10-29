@@ -1,0 +1,262 @@
+/* Apparence inspirée de macOS : police système, couleurs sémantiques, mode clair et sombre. */
+
+:root {
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  --accent: #007aff;
+  --text: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-tertiary: #a1a1a6;
+  --window-bg: #ffffff;
+  --sidebar-bg: #f2f2f5;
+  --control-bg: rgba(0, 0, 0, 0.05);
+  --control-bg-hover: rgba(0, 0, 0, 0.08);
+  --separator: rgba(0, 0, 0, 0.1);
+  --selection: rgba(0, 0, 0, 0.08);
+  --focus-ring: color-mix(in srgb, var(--accent) 45%, transparent);
+  --titlebar-height: 52px;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: #0a84ff;
+    --text: #f5f5f7;
+    --text-secondary: #a1a1a6;
+    --text-tertiary: #6e6e73;
+    --window-bg: #1e1e1e;
+    --sidebar-bg: #2a2a2c;
+    --control-bg: rgba(255, 255, 255, 0.08);
+    --control-bg-hover: rgba(255, 255, 255, 0.12);
+    --separator: rgba(255, 255, 255, 0.12);
+    --selection: rgba(255, 255, 255, 0.1);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--window-bg);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+/* Sur Mac, la fenêtre est transparente pour laisser voir l'effet de flou sous la barre latérale. */
+html[data-platform='darwin'] body {
+  background: transparent;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+input {
+  user-select: text;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.app {
+  display: flex;
+  height: 100%;
+}
+
+/* Barre latérale */
+
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--separator);
+}
+
+html[data-platform='darwin'] .sidebar {
+  background: transparent;
+}
+
+.sidebar-titlebar {
+  height: var(--titlebar-height);
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+html:not([data-platform='darwin']) .sidebar-titlebar {
+  height: 12px;
+}
+
+.sidebar-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0 10px 10px;
+}
+
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-bottom {
+  margin-top: auto;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  font-size: 13px;
+}
+
+.sidebar-item svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.sidebar-item:hover {
+  background: var(--control-bg);
+}
+
+.sidebar-item.is-selected {
+  background: var(--selection);
+  font-weight: 500;
+}
+
+/* Contenu */
+
+.content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--window-bg);
+}
+
+.toolbar {
+  height: var(--titlebar-height);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--separator);
+  -webkit-app-region: drag;
+}
+
+.toolbar-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.toolbar-items {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.toolbar-items > * {
+  -webkit-app-region: no-drag;
+}
+
+.content-body {
+  flex: 1;
+  overflow: auto;
+}
+
+/* Contrôles */
+
+.search-field {
+  flex: 1;
+  max-width: 560px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  margin-right: auto;
+  border-radius: 8px;
+  background: var(--control-bg);
+  color: var(--text-secondary);
+}
+
+.search-field:focus-within {
+  outline: 3px solid var(--focus-ring);
+}
+
+.search-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.search-field input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--control-bg);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.button:hover {
+  background: var(--control-bg-hover);
+}
+
+.button-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.button-primary:hover {
+  background: color-mix(in srgb, var(--accent) 88%, #000);
+}
+
+.empty-state {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  font-size: 17px;
+}

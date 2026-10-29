@@ -19,6 +19,7 @@ out/
 dist/
 release/
 *.log
+*.tsbuildinfo
 
 # Système
 .DS_Store
