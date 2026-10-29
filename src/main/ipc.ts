@@ -12,6 +12,7 @@ import {
 } from '@shared/api'
 import {
   editorChoices,
+  emptyTrash,
   getArticleInput,
   listTrash,
   restoreArticle,
@@ -60,6 +61,7 @@ export function registerIpc(db: DatabaseSync, paths: DataPaths, backupNow: () =>
   ipcMain.handle(IPC.trashArticle, (_e, id: number) => trashArticle(db, id, undo))
   ipcMain.handle(IPC.restoreArticle, (_e, id: number) => restoreArticle(db, id, undo))
   ipcMain.handle(IPC.listTrash, () => listTrash(db))
+  ipcMain.handle(IPC.emptyTrash, () => emptyTrash(db, paths.root, undo))
   ipcMain.handle(IPC.undo, (): UndoResult | null => {
     const entry = undo.pop()
     if (!entry) return null

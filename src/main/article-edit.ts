@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import type { ArticleCard, ArticleInput, EditableImage, EditorChoices, ImageUpload } from '@shared/api'
@@ -29,6 +29,12 @@ export class UndoStack {
 
   pop(): UndoEntry | undefined {
     return this.entries.pop()
+  }
+
+  // Après une suppression définitive, ces articles ne peuvent plus être annulés.
+  forget(articleIds: number[]): void {
+    const gone = new Set(articleIds)
+    this.entries = this.entries.filter((e) => !gone.has(e.articleId))
   }
 }
 
@@ -219,6 +225,52 @@ export function listTrash(db: DatabaseSync): ArticleCard[] {
       )
       .all() as Row[]
   ).map(toCard)
+}
+
+export interface EmptyTrashResult {
+  deleted: number
+  keptInProjects: number
+}
+
+// Suppression définitive des articles de la corbeille, sauf ceux encore utilisés dans un projet.
+export function emptyTrash(db: DatabaseSync, dataRoot: string, undo: UndoStack): EmptyTrashResult {
+  const trashed = db.prepare('SELECT id FROM articles WHERE deleted_at IS NOT NULL').all() as { id: number }[]
+  const used = new Set(
+    (db.prepare('SELECT DISTINCT article_id AS id FROM need_articles').all() as { id: number }[]).map((r) => r.id)
+  )
+  const ids = trashed.map((r) => r.id).filter((id) => !used.has(id))
+  inTransaction(db, () => {
+    for (const id of ids) {
+      db.prepare('DELETE FROM articles_fts WHERE rowid = ?').run(id)
+      db.prepare('DELETE FROM articles WHERE id = ?').run(id)
+    }
+  })
+  undo.forget(ids)
+  purgeOrphanImages(db, dataRoot)
+  return { deleted: ids.length, keptInProjects: trashed.length - ids.length }
+}
+
+// Supprime les photos que plus rien n'utilise (fichier, miniature et ligne).
+// Toute nouvelle table qui référence images doit être ajoutée ici.
+export function purgeOrphanImages(db: DatabaseSync, dataRoot: string): number {
+  const orphans = db
+    .prepare(
+      `SELECT i.id, i.rel_path, i.sha256 FROM images i
+       WHERE NOT EXISTS (SELECT 1 FROM article_images x WHERE x.image_id = i.id)
+         AND NOT EXISTS (SELECT 1 FROM inspiration_images x WHERE x.image_id = i.id)
+         AND NOT EXISTS (SELECT 1 FROM renders x WHERE x.image_id = i.id OR x.inset_image_id = i.id)
+         AND NOT EXISTS (SELECT 1 FROM render_versions x WHERE x.image_id = i.id)
+         AND NOT EXISTS (SELECT 1 FROM free_page_images x WHERE x.image_id = i.id)
+         AND NOT EXISTS (SELECT 1 FROM paints x WHERE x.image_id = i.id)
+         AND i.id NOT IN (SELECT CAST(value AS INTEGER) FROM settings WHERE key LIKE '%image_id')`
+    )
+    .all() as { id: number; rel_path: string; sha256: string | null }[]
+  for (const img of orphans) {
+    db.prepare('DELETE FROM images WHERE id = ?').run(img.id)
+    rmSync(join(dataRoot, img.rel_path), { force: true })
+    if (img.sha256) rmSync(thumbnailPath(dataRoot, img.sha256), { force: true })
+  }
+  return orphans.length
 }
 
 // Enregistre une photo dans le dossier de données (une seule copie par contenu) et sa miniature.

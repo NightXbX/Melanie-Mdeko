@@ -4,7 +4,16 @@ import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ArticleInput } from '@shared/api'
-import { getArticleInput, listTrash, restoreArticle, saveArticle, trashArticle, UndoStack, uploadImage } from './article-edit'
+import {
+  emptyTrash,
+  getArticleInput,
+  listTrash,
+  restoreArticle,
+  saveArticle,
+  trashArticle,
+  UndoStack,
+  uploadImage
+} from './article-edit'
 import { ensureSearchIndex, searchArticles } from './articles'
 import { migrate, openDatabase } from './db/database'
 
@@ -92,6 +101,33 @@ describe('corbeille et annulation', () => {
     undo.pop()!.undo()
     expect(getArticleInput(db, id)).toBeNull()
     expect(undo.pop()).toBeUndefined()
+  })
+})
+
+describe('vider la corbeille', () => {
+  it('supprime définitivement les articles et les photos devenues inutiles', () => {
+    const photo = uploadImage(db, root, { bytes: new Uint8Array([7, 7]), ext: 'png', width: 1, height: 1, thumbnail: new Uint8Array([1]) })
+    const file = join(root, decodeURIComponent(photo.url.replace('mdeko://media/', '')))
+    const gardé = saveArticle(db, input({ name: 'Gardé' }), undo)
+    const jeté = saveArticle(db, input({ name: 'Jeté', images: [photo] }), undo)
+    trashArticle(db, jeté, undo)
+
+    expect(emptyTrash(db, root, undo)).toEqual({ deleted: 1, keptInProjects: 0 })
+    expect(listTrash(db)).toEqual([])
+    expect(getArticleInput(db, gardé)).not.toBeNull()
+    expect(existsSync(file)).toBe(false)
+    expect(db.prepare('SELECT count(*) AS n FROM images').get()).toEqual({ n: 0 })
+    // L'annulation ne peut plus faire revenir un article supprimé définitivement.
+    expect(undo.pop()!.articleId).toBe(gardé)
+  })
+
+  it('garde un article encore utilisé dans un projet', () => {
+    const id = saveArticle(db, input(), undo)
+    db.exec("INSERT INTO projects (id, client_name) VALUES (1, 'Test')")
+    db.exec('INSERT INTO needs (id, project_id) VALUES (1, 1)')
+    db.prepare("INSERT INTO need_articles (need_id, article_id, role) VALUES (1, ?, 'choice')").run(id)
+    trashArticle(db, id, undo)
+    expect(emptyTrash(db, root, undo)).toEqual({ deleted: 0, keptInProjects: 1 })
   })
 })
 

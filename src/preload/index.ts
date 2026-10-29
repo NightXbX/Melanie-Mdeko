@@ -17,6 +17,7 @@ const api: MdekoApi = {
   trashArticle: (id) => ipcRenderer.invoke(IPC.trashArticle, id),
   restoreArticle: (id) => ipcRenderer.invoke(IPC.restoreArticle, id),
   listTrash: () => ipcRenderer.invoke(IPC.listTrash),
+  emptyTrash: () => ipcRenderer.invoke(IPC.emptyTrash),
   undo: () => ipcRenderer.invoke(IPC.undo),
   confirm: (message, detail, action) => ipcRenderer.invoke(IPC.confirm, message, detail, action),
   onMenu: (listener) => {

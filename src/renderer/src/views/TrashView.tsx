@@ -19,9 +19,34 @@ export function TrashView() {
     notify(`« ${a.name} » est de retour dans la shopping list`, true)
   }
 
+  // Suppression définitive : seule action irréversible de l'appli, donc confirmation explicite.
+  const empty = async () => {
+    if (!items?.length) return
+    const n = items.length
+    const ok = await window.mdeko.confirm(
+      'Vider la corbeille ?',
+      `${n > 1 ? `Les ${n} articles seront supprimés` : 'L’article sera supprimé'} définitivement. Cette action ne peut pas être annulée.`,
+      'Vider la corbeille'
+    )
+    if (!ok) return
+    const result = await window.mdeko.emptyTrash()
+    refresh()
+    notify(
+      result.keptInProjects
+        ? `Corbeille vidée. ${result.keptInProjects} article(s) utilisé(s) dans un projet ont été gardés.`
+        : 'Corbeille vidée'
+    )
+  }
+
   return (
     <>
-      <Toolbar title="Corbeille" />
+      <Toolbar title="Corbeille">
+        {items && items.length > 0 && (
+          <button type="button" className="button button-danger" onClick={() => void empty()}>
+            Vider la corbeille
+          </button>
+        )}
+      </Toolbar>
       <div className="content-body">
         {items?.length === 0 && <EmptyState title="La corbeille est vide" />}
         {items && items.length > 0 && (

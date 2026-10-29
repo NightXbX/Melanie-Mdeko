@@ -145,6 +145,7 @@ export interface MdekoApi {
   trashArticle(id: number): Promise<void>
   restoreArticle(id: number): Promise<void>
   listTrash(): Promise<ArticleCard[]>
+  emptyTrash(): Promise<{ deleted: number; keptInProjects: number }>
   undo(): Promise<UndoResult | null>
   confirm(message: string, detail: string, action: string): Promise<boolean>
   onMenu(listener: (command: MenuCommand) => void): () => void
@@ -166,6 +167,7 @@ export const IPC = {
   trashArticle: 'articles:trash',
   restoreArticle: 'articles:restore',
   listTrash: 'articles:list-trash',
+  emptyTrash: 'articles:empty-trash',
   undo: 'app:undo',
   confirm: 'app:confirm',
   menu: 'menu:command'

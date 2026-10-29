@@ -651,6 +651,10 @@ html:not([data-platform='darwin']) .sidebar-titlebar {
   justify-content: center;
 }
 
+.button-danger {
+  color: #d70015;
+}
+
 .button:disabled {
   opacity: 0.45;
 }
