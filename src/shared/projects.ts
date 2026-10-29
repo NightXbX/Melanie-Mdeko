@@ -1,9 +1,11 @@
 import type { ArticleCard } from './api'
-import type { ThemeId } from './book'
 
 // Types des projets et du design book, partagés entre le processus principal et l'interface.
 
 export type RenderSection = 'plans' | 'changes'
+
+// Teintes dont la marque n'est pas précisée.
+export const DEFAULT_PAINT_BRAND = 'Teintes et couleurs'
 
 export interface ProjectSummary {
   id: number
@@ -26,6 +28,7 @@ export interface ProjectRender {
   insetUrl: string | null
   section: RenderSection
   caption: string | null
+  edited: boolean // une version retouchée par l'assistant remplace l'original dans le book
 }
 
 export interface ProjectNeed {
@@ -35,6 +38,9 @@ export interface ProjectNeed {
   category: string | null
   choice: ArticleCard | null
   alternatives: ArticleCard[]
+  // Photos de « Mon choix » : toutes celles de l'article, et celles retenues pour le book (vide = la première).
+  choiceImages: { id: number; url: string }[]
+  bookImageIds: number[]
 }
 
 export interface Paint {
@@ -69,7 +75,6 @@ export interface Project {
   phone: string
   email: string
   bookDate: string | null
-  bookTheme: ThemeId
   rooms: Room[]
   texts: ProjectTexts
   renders: ProjectRender[]
@@ -79,7 +84,7 @@ export interface Project {
 }
 
 export type ProjectPatch = Partial<
-  Pick<Project, 'clientTitle' | 'clientName' | 'address' | 'phone' | 'email' | 'bookDate' | 'bookTheme'> & { texts: ProjectTexts }
+  Pick<Project, 'clientTitle' | 'clientName' | 'address' | 'phone' | 'email' | 'bookDate'> & { texts: ProjectTexts }
 >
 
 // Réglages de Mélanie : coordonnées et textes modèles (dans ses données, jamais dans le code).

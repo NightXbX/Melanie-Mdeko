@@ -11,7 +11,8 @@ import type {
   ProjectSummary,
   RenderSection
 } from '@shared/projects'
-import { THEMES, type ThemeId } from '@shared/book'
+import { DEFAULT_PAINT_BRAND } from '@shared/projects'
+import type { BookAdjustment } from '@shared/book'
 import { CARD_COLUMNS, toCard } from './articles'
 import { mediaUrl, thumbnailUrl } from './media-urls'
 
@@ -61,7 +62,6 @@ export function updateProject(db: DatabaseSync, id: number, patch: ProjectPatch)
   if (patch.phone !== undefined) columns.push(['phone', patch.phone || null])
   if (patch.email !== undefined) columns.push(['email', patch.email || null])
   if (patch.bookDate !== undefined) columns.push(['book_date', patch.bookDate])
-  if (patch.bookTheme !== undefined && THEMES.some((t) => t.id === patch.bookTheme)) columns.push(['book_theme', patch.bookTheme])
   if (patch.texts) {
     columns.push(['intro_text', patch.texts.intro], ['wishes_text', patch.texts.wishes], ['closing_text', patch.texts.closing])
   }
@@ -93,7 +93,6 @@ export function getProject(db: DatabaseSync, id: number): Project | null {
     phone: (p.phone as string | null) ?? '',
     email: (p.email as string | null) ?? '',
     bookDate: p.book_date as string | null,
-    bookTheme: p.book_theme as ThemeId,
     rooms,
     texts: {
       intro: p.intro_text as string | null,
@@ -121,13 +120,15 @@ export function setRooms(db: DatabaseSync, projectId: number, names: string[]): 
   touch(db, projectId)
 }
 
-// --- Rendus 3D ------------------------------------------------------------------------------------
+// --- Rendus 3D -----------------------------------------------------------------------------------
 
+// Image montrée : la version retouchée gardée, sinon l'original.
 function getRenders(db: DatabaseSync, projectId: number): ProjectRender[] {
   const rows = db
     .prepare(
-      `SELECT r.id, r.section, r.caption, r.image_id, i.rel_path, i.sha256, ins.rel_path AS inset
-       FROM renders r JOIN images i ON i.id = r.image_id LEFT JOIN images ins ON ins.id = r.inset_image_id
+      `SELECT r.id, r.section, r.caption, i.id AS image_id, i.rel_path, i.sha256, ins.rel_path AS inset, v.id AS version
+       FROM renders r LEFT JOIN render_versions v ON v.id = r.active_version_id
+       JOIN images i ON i.id = coalesce(v.image_id, r.image_id) LEFT JOIN images ins ON ins.id = r.inset_image_id
        WHERE r.project_id = ? ORDER BY r.sort, r.id`
     )
     .all(projectId) as Row[]
@@ -138,7 +139,8 @@ function getRenders(db: DatabaseSync, projectId: number): ProjectRender[] {
     thumbnailUrl: thumbnailUrl(r.sha256 as string),
     insetUrl: r.inset ? mediaUrl(r.inset as string) : null,
     section: r.section as RenderSection,
-    caption: r.caption as string | null
+    caption: r.caption as string | null,
+    edited: r.version !== null
   }))
 }
 
@@ -191,14 +193,29 @@ function getNeeds(db: DatabaseSync, projectId: number): ProjectNeed[] {
        WHERE n.project_id = ? ORDER BY n.sort, n.id`
     )
     .all(projectId) as Row[]
-  return rows.map((r) => ({
-    id: r.id as number,
-    roomId: r.room_id as number | null,
-    label: r.label as string | null,
-    category: r.category as string | null,
-    choice: cards(db, r.id as number, 'choice')[0] ?? null,
-    alternatives: cards(db, r.id as number, 'alternative')
-  }))
+  return rows.map((r) => {
+    const choice = cards(db, r.id as number, 'choice')[0] ?? null
+    const choiceImages = choice
+      ? (
+          db
+            .prepare('SELECT i.id, i.rel_path FROM article_images ai JOIN images i ON i.id = ai.image_id WHERE ai.article_id = ? ORDER BY ai.sort')
+            .all(choice.id) as { id: number; rel_path: string }[]
+        ).map((i) => ({ id: i.id, url: mediaUrl(i.rel_path) }))
+      : []
+    const bookImageIds = (db.prepare('SELECT image_id FROM need_images WHERE need_id = ? ORDER BY sort').all(r.id as number) as { image_id: number }[])
+      .map((i) => i.image_id)
+      .filter((id) => choiceImages.some((i) => i.id === id))
+    return {
+      id: r.id as number,
+      roomId: r.room_id as number | null,
+      label: r.label as string | null,
+      category: r.category as string | null,
+      choice,
+      alternatives: cards(db, r.id as number, 'alternative'),
+      choiceImages,
+      bookImageIds
+    }
+  })
 }
 
 // Articles ressemblants : même sous-catégorie, prix le plus proche, avec photo de préférence.
@@ -264,6 +281,7 @@ export function setNeedChoice(db: DatabaseSync, needId: number, articleId: numbe
     ? alternatives.map((id) => (id === articleId ? previous : id)).filter((id): id is number => Boolean(id))
     : suggestAlternatives(db, articleId)
   setNeedArticles(db, needId, articleId, nextAlternatives, !alternatives.includes(articleId))
+  if (previous !== articleId) db.prepare('DELETE FROM need_images WHERE need_id = ?').run(needId)
   const cat = db.prepare('SELECT category_id FROM articles WHERE id = ?').get(articleId) as { category_id: number | null }
   db.prepare('UPDATE needs SET category_id = ? WHERE id = ?').run(cat.category_id, needId)
 }
@@ -271,6 +289,12 @@ export function setNeedChoice(db: DatabaseSync, needId: number, articleId: numbe
 export function setNeedAlternatives(db: DatabaseSync, needId: number, articleIds: number[]): void {
   const choice = cards(db, needId, 'choice')[0]?.id ?? null
   setNeedArticles(db, needId, choice, articleIds, false)
+}
+
+// Photos de « Mon choix » à montrer dans le book, dans l'ordre (aucune : la première photo de l'article).
+export function setNeedImages(db: DatabaseSync, needId: number, imageIds: number[]): void {
+  db.prepare('DELETE FROM need_images WHERE need_id = ?').run(needId)
+  imageIds.forEach((id, sort) => db.prepare('INSERT OR IGNORE INTO need_images (need_id, image_id, sort) VALUES (?, ?, ?)').run(needId, id, sort))
 }
 
 export function setNeedRoom(db: DatabaseSync, needId: number, roomId: number | null): void {
@@ -302,7 +326,7 @@ export function listPaints(db: DatabaseSync): Paint[] {
 }
 
 export function createPaint(db: DatabaseSync, paint: Omit<Paint, 'id' | 'promoCode'>): number {
-  const brand = paint.brand.trim() || 'Autre'
+  const brand = paint.brand.trim() || DEFAULT_PAINT_BRAND
   const found = db.prepare('SELECT id FROM paint_brands WHERE name = ?').get(brand) as { id: number } | undefined
   const brandId = found?.id ?? Number(db.prepare('INSERT INTO paint_brands (name) VALUES (?)').run(brand).lastInsertRowid)
   return Number(
@@ -388,9 +412,16 @@ export function wishesText(project: Project, settings: DesignerSettings): string
 
 // Texte modifié dans l'aperçu : la clé indique ce qu'il faut mettre à jour (voir EditKey).
 export function editBookText(db: DatabaseSync, projectId: number, key: string, value: string): void {
-  const [kind, rawId] = key.split(':')
-  const id = Number(rawId)
+  const kind = key.slice(0, key.indexOf(':') < 0 ? key.length : key.indexOf(':'))
+  const rest = key.slice(kind.length + 1)
+  const id = Number(rest)
   const text = value.replace(/ /g, ' ').replace(/\s+$/, '')
+  if (kind === 'text') {
+    // Texte propre à ce book : « text:<page>|<élément> ».
+    const [pageKey, elementId] = rest.split('|')
+    adjustElement(db, projectId, pageKey, elementId, { text })
+    return
+  }
   if (kind === 'intro' || kind === 'wishes' || kind === 'closing') {
     const project = getProject(db, projectId)
     if (project) updateProject(db, projectId, { texts: { ...project.texts, [kind]: text } })
@@ -414,8 +445,13 @@ export function addNote(db: DatabaseSync, projectId: number, pageKey: string, x:
   )
 }
 
-export function moveNote(db: DatabaseSync, noteId: number, x: number, y: number): void {
-  db.prepare('UPDATE book_notes SET x = ?, y = ? WHERE id = ?').run(Math.max(0, Math.min(x, 280)), Math.max(0, Math.min(y, 203)), noteId)
+export function moveNote(db: DatabaseSync, noteId: number, x: number, y: number, w?: number): void {
+  db.prepare('UPDATE book_notes SET x = ?, y = ?, w = coalesce(?, w) WHERE id = ?').run(
+    Math.max(0, Math.min(x, 280)),
+    Math.max(0, Math.min(y, 203)),
+    w === undefined ? null : Math.max(20, Math.min(w, 280)),
+    noteId
+  )
 }
 
 export function deleteNote(db: DatabaseSync, noteId: number): void {
@@ -431,4 +467,63 @@ export function listNotes(db: DatabaseSync, projectId: number) {
     w: r.w as number,
     text: r.text as string
   }))
+}
+
+// --- Ajustements faits dans l'aperçu : position, taille, taille du texte, texte ---------------------------
+
+const finite = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+const clamp = (v: unknown, min: number, max: number) => {
+  const n = finite(v)
+  return n === null ? null : Math.max(min, Math.min(n, max))
+}
+
+const RESET = 'UPDATE book_adjustments SET x = NULL, y = NULL, w = NULL, h = NULL, size = NULL'
+
+// Complète l'ajustement d'un élément (null : il revient à sa place et à sa taille d'origine, son texte est gardé).
+export function adjustElement(db: DatabaseSync, projectId: number, pageKey: string, elementId: string, patch: BookAdjustment | null): void {
+  if (!pageKey || !elementId) return
+  const where = [projectId, pageKey, elementId] as const
+  if (patch === null) {
+    db.prepare(`${RESET} WHERE project_id = ? AND page_key = ? AND element_id = ?`).run(...where)
+    db.prepare('DELETE FROM book_adjustments WHERE project_id = ? AND page_key = ? AND element_id = ? AND text IS NULL').run(...where)
+  } else {
+    const cur = (db.prepare('SELECT * FROM book_adjustments WHERE project_id = ? AND page_key = ? AND element_id = ?').get(...where) ?? {}) as Row
+    const value = (k: keyof BookAdjustment) => (patch[k] !== undefined ? patch[k] : cur[k])
+    const text = value('text')
+    db.prepare(
+      `INSERT INTO book_adjustments (project_id, page_key, element_id, x, y, w, h, size, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (project_id, page_key, element_id) DO UPDATE SET
+         x = excluded.x, y = excluded.y, w = excluded.w, h = excluded.h, size = excluded.size, text = excluded.text`
+    ).run(
+      ...where,
+      clamp(value('x'), -280, 290),
+      clamp(value('y'), -200, 205),
+      clamp(value('w'), 2, 400),
+      clamp(value('h'), 1, 300),
+      clamp(value('size'), 5, 120),
+      typeof text === 'string' ? text : null
+    )
+  }
+  touch(db, projectId)
+}
+
+export function listAdjustments(db: DatabaseSync, projectId: number): Record<string, BookAdjustment> {
+  const out: Record<string, BookAdjustment> = {}
+  for (const r of db.prepare('SELECT * FROM book_adjustments WHERE project_id = ?').all(projectId) as Row[]) {
+    const a: BookAdjustment = {}
+    for (const k of ['x', 'y', 'w', 'h', 'size'] as const) {
+      const v = finite(r[k])
+      if (v !== null) a[k] = v
+    }
+    if (typeof r.text === 'string') a.text = r.text
+    out[`${r.page_key as string}|${r.element_id as string}`] = a
+  }
+  return out
+}
+
+// Toute la page revient à la mise en page d'origine (les textes écrits sont gardés).
+export function resetPageAdjustments(db: DatabaseSync, projectId: number, pageKey: string): void {
+  db.prepare(`${RESET} WHERE project_id = ? AND page_key = ?`).run(projectId, pageKey)
+  db.prepare('DELETE FROM book_adjustments WHERE project_id = ? AND page_key = ? AND text IS NULL').run(projectId, pageKey)
+  touch(db, projectId)
 }

@@ -1,5 +1,5 @@
 // Contrat entre le processus principal et l'interface (exposé via le preload).
-import type { Page } from './book'
+import type { BookAdjustment, Page } from './book'
 import type {
   Artisan,
   BookFormat,
@@ -103,6 +103,7 @@ export interface ProjectsApi {
   setNeedRoom(needId: number, roomId: number | null): Promise<void>
   setNeedChoice(needId: number, articleId: number): Promise<void>
   setNeedAlternatives(needId: number, articleIds: number[]): Promise<void>
+  setNeedImages(needId: number, imageIds: number[]): Promise<void>
   removeNeed(needId: number): Promise<void>
   listPaints(): Promise<Paint[]>
   createPaint(paint: Omit<Paint, 'id' | 'promoCode'>): Promise<number>
@@ -114,11 +115,59 @@ export interface ProjectsApi {
   pages(id: number): Promise<Page[]>
   editText(id: number, key: string, text: string): Promise<void>
   addNote(id: number, pageKey: string, x: number, y: number): Promise<number>
-  moveNote(noteId: number, x: number, y: number): Promise<void>
+  moveNote(noteId: number, x: number, y: number, w?: number): Promise<void>
+  adjust(id: number, pageKey: string, elementId: string, patch: BookAdjustment | null): Promise<void>
+  resetPage(id: number, pageKey: string): Promise<void>
   deleteNote(noteId: number): Promise<void>
   export(id: number, format: BookFormat): Promise<string>
   openFolder(id: number): Promise<void>
 }
+
+// --- Assistant IA (retouche des rendus) ---
+
+export interface AiSettings {
+  models: string[] // 1 moteur, ou 2 pour le duel
+  capCents: number // plafond de dépense du mois
+}
+
+export interface AiStatus {
+  hasKey: boolean
+  canStoreKey: boolean // le Trousseau (Mac) ou le coffre de Windows est disponible
+  settings: AiSettings
+  spentCents: number // ce mois-ci
+  estimateCents: number // coût probable d'une demande (toutes propositions comprises)
+  score: { model: string; kept: number; proposed: number }[]
+}
+
+// Proposition d'un moteur ; le nom du moteur n'est pas montré pendant le duel, pour ne pas influencer le choix.
+export interface AiProposal {
+  versionId: number | null
+  imageUrl: string | null
+  costCents: number
+  error: string | null
+}
+
+export interface AiVersion {
+  id: number | null // null : l'original
+  imageUrl: string
+  prompt: string | null
+  createdAt: string | null
+  active: boolean
+}
+
+export interface AiApi {
+  status(): Promise<AiStatus>
+  setKey(key: string | null): Promise<void>
+  saveSettings(settings: Partial<AiSettings>): Promise<void>
+  listModels(): Promise<{ id: string; name: string }[]>
+  edit(renderId: number, prompt: string, referenceImageIds: number[]): Promise<AiProposal[]>
+  cancel(): Promise<void>
+  keep(versionId: number): Promise<void>
+  history(renderId: number): Promise<AiVersion[]>
+  show(renderId: number, versionId: number | null): Promise<void>
+}
+
+export const AI_METHODS = ['status', 'setKey', 'saveSettings', 'listModels', 'edit', 'cancel', 'keep', 'history', 'show'] as const satisfies readonly (keyof AiApi)[]
 
 // --- Édition ---
 
@@ -173,7 +222,14 @@ export interface UndoResult {
   articleId: number
 }
 
-export type MenuCommand = 'undo' | 'new-article' | 'new-project' | 'settings' | 'import'
+export type MenuCommand = 'undo' | 'new-article' | 'new-project' | 'settings' | 'import' | 'check-update'
+
+// Nouvelle version publiée sur GitHub.
+export interface UpdateInfo {
+  version: string
+  notes: string
+  sizeBytes: number
+}
 
 // Bilan d'un import de PDF (design book ou shopping list).
 export interface ImportSummary {
@@ -185,8 +241,34 @@ export interface ImportSummary {
   needs: number
 }
 
+// Vérification de la base (écran « Vérification »).
+export interface CheckGroup {
+  id: string
+  severity: 'error' | 'warning' | 'info'
+  title: string
+  description: string
+  count: number
+  articles: ArticleCard[] // les premiers seulement
+}
+
+export interface CheckReport {
+  checkedAt: string
+  database: { path: string; sizeBytes: number; ok: boolean; problems: string[] }
+  articles: number
+  images: number
+  links: { toCheck: number; ok: number }
+  groups: CheckGroup[]
+}
+
+export interface LinkCheckProgress {
+  done: number
+  total: number
+  gone: number
+}
+
 export interface MdekoApi {
   projects: ProjectsApi
+  ai: AiApi
   getAppInfo(): Promise<AppInfo>
   openDataFolder(): Promise<void>
   backupNow(): Promise<string>
@@ -209,6 +291,15 @@ export interface MdekoApi {
   importPdf(path?: string): Promise<ImportSummary | null>
   onImportProgress(listener: (page: number, total: number) => void): () => void
   pathForFile(file: File): string
+  checkDatabase(): Promise<CheckReport>
+  checkLinks(): Promise<LinkCheckProgress>
+  stopLinkCheck(): Promise<void>
+  onLinkProgress(listener: (progress: LinkCheckProgress) => void): () => void
+  showDatabase(): Promise<void>
+  checkUpdate(): Promise<UpdateInfo | null>
+  installUpdate(): Promise<void>
+  onUpdateAvailable(listener: (update: UpdateInfo) => void): () => void
+  onUpdateProgress(listener: (done: number, total: number) => void): () => void
 }
 
 export const IPC = {
@@ -233,13 +324,23 @@ export const IPC = {
   menu: 'menu:command',
   importPdf: 'import:pdf',
   importProgress: 'import:progress',
+  checkDatabase: 'check:database',
+  checkLinks: 'check:links',
+  stopLinkCheck: 'check:stop-links',
+  linkProgress: 'check:link-progress',
+  showDatabase: 'app:show-database',
+  checkUpdate: 'update:check',
+  installUpdate: 'update:install',
+  updateAvailable: 'update:available',
+  updateProgress: 'update:progress',
   // Projets : un canal unique, la méthode appelée est passée en premier argument.
-  projects: 'projects:call'
+  projects: 'projects:call',
+  ai: 'ai:call'
 } as const
 
 export const PROJECT_METHODS = [
   'list', 'create', 'get', 'update', 'trash', 'restore', 'setRooms', 'addRenders', 'updateRender', 'removeRender',
-  'reorder', 'addNeed', 'setNeedRoom', 'setNeedChoice', 'setNeedAlternatives', 'removeNeed', 'listPaints', 'createPaint',
+  'reorder', 'addNeed', 'setNeedRoom', 'setNeedChoice', 'setNeedAlternatives', 'setNeedImages', 'removeNeed', 'listPaints', 'createPaint',
   'listArtisans', 'saveArtisan', 'setLinks', 'getSettings', 'saveSettings', 'pages', 'editText', 'addNote', 'moveNote',
-  'deleteNote', 'export', 'openFolder'
+  'deleteNote', 'adjust', 'resetPage', 'export', 'openFolder'
 ] as const satisfies readonly (keyof ProjectsApi)[]

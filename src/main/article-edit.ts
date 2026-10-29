@@ -262,6 +262,7 @@ export function purgeOrphanImages(db: DatabaseSync, dataRoot: string): number {
          AND NOT EXISTS (SELECT 1 FROM render_versions x WHERE x.image_id = i.id)
          AND NOT EXISTS (SELECT 1 FROM free_page_images x WHERE x.image_id = i.id)
          AND NOT EXISTS (SELECT 1 FROM paints x WHERE x.image_id = i.id)
+         AND NOT EXISTS (SELECT 1 FROM need_images x WHERE x.image_id = i.id)
          AND i.id NOT IN (SELECT CAST(value AS INTEGER) FROM settings WHERE key LIKE '%image_id')`
     )
     .all() as { id: number; rel_path: string; sha256: string | null }[]

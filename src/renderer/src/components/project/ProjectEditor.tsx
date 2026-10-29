@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react'
-import { THEMES, type ThemeId } from '@shared/book'
 import type { BookFormat, DesignerSettings, Project } from '@shared/projects'
 import { useApp } from '../../app-context'
 import { Icon } from '../Icon'
@@ -42,7 +41,7 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
     try {
       const file = await window.mdeko.projects.export(projectId, format)
       // Projets › 2026 › Mme Durand : on montre où le fichier a été rangé.
-      const where = file.split(/[\/]/).slice(-4, -1).join(' › ')
+      const where = file.split(/[\\/]/).slice(-4, -1).join(' › ')
       notify(`Design book enregistré dans ${where}`)
     } catch (e) {
       notify(`Le design book n’a pas pu être créé : ${(e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`)
@@ -58,7 +57,7 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
     { id: 'wishes', label: 'Vos envies' },
     { id: 'renders', label: 'Plans 3D', count: project.renders.length },
     { id: 'needs', label: 'Shopping list', count: project.needs.length },
-    { id: 'paints', label: 'Couleurs', count: project.paintIds.length },
+    { id: 'paints', label: 'Teintes et couleurs', count: project.paintIds.length },
     { id: 'artisans', label: 'Artisans', count: project.artisanIds.length },
     { id: 'texts', label: 'Textes' }
   ]
@@ -73,22 +72,6 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
         </button>
         <h1 className="toolbar-title">{title}</h1>
         <div className="toolbar-items">
-          <label className="theme-select">
-            Style
-            <select
-              value={project.bookTheme}
-              onChange={async (e) => {
-                await window.mdeko.projects.update(projectId, { bookTheme: e.target.value as ThemeId })
-                await reload()
-              }}
-            >
-              {THEMES.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </label>
           <button
             type="button"
             className={`button${preview ? ' is-active' : ''}`}

@@ -18,6 +18,7 @@ Mac cible : **Mac fixe M1, 16 Go, macOS Tahoe 26.x** (26.2.2 déclaré ; un expo
 - **SQLite intégré à Node** (`node:sqlite`, `DatabaseSync`) : aucun module natif à compiler. FTS5 est disponible et insensible aux accents (`unicode61 remove_diacritics 2`). **PptxGenJS** pour le PPTX, `webContents.printToPDF` pour le PDF, `sharp` pour les images (à ajouter).
 - Versions figées (`package.json` sans `^`), toujours publiées depuis au moins 2 semaines : Electron 44.7.2 (Node 24), electron-vite 6, electron-builder 26.17, Vite 8.3, React 19.3, TypeScript 7.0, Vitest 5.0.
 - Aspect natif : `titleBarStyle: 'hiddenInset'`, `vibrancy: 'sidebar'`, menus natifs avec raccourcis (⌘N, ⌘S, ⌘F, ⌘Z, ⌘⌫), **mode clair uniquement** (`nativeTheme.themeSource = 'light'`, choix de Mélanie), police système (`-apple-system`), glisser-déposer depuis le Finder.
+- Icône : `build/icon.png` (1024 px, logo m·deko sur fond crème, coins arrondis à la façon macOS) ; electron-builder en tire l'icône Mac et Windows.
 - Appli non signée pendant le test (Gatekeeper : autorisation unique dans Réglages › Confidentialité et sécurité). Pas de mise à jour automatique sans signature : on remplace l'appli à la main. La signature (Apple Developer, 99 $/an) est envisagée après le test.
 - Identifiants (code, base de données) en anglais ; textes d'interface et commentaires en français.
 
@@ -29,7 +30,7 @@ Mac cible : **Mac fixe M1, 16 Go, macOS Tahoe 26.x** (26.2.2 déclaré ; un expo
 - Images : protocole interne `mdeko://media/<chemin>` et `mdeko://miniature/<sha256>` (miniatures JPEG 360 px dans `images/miniatures/`, créées par la migration ; repli sur l'image complète).
 - `src/preload/` : pont sécurisé (`window.mdeko`). `src/shared/api.ts` : contrat IPC commun. `src/renderer/` : interface React.
 - Fenêtre en `sandbox` + `contextIsolation`, aucun accès Node dans l'interface. Les liens web s'ouvrent dans le navigateur.
-- CI : `.github/workflows/build-mac.yml` (runner `macos-latest`) : typecheck, tests, build `.dmg` + `.zip` arm64, signature ad hoc vérifiée par `codesign`. Un tag `vX.Y.Z` crée une Release GitHub (source des mises à jour).
+- CI : `.github/workflows/build-mac.yml` : Mac (`macos-latest` : typecheck, tests, `.dmg` + `.zip` arm64, signature ad hoc vérifiée par `codesign`) et Windows (`windows-latest` : installateur NSIS). Chaque push sur `main` (ou un tag `vX.Y.Z`) publie une Release GitHub, source des mises à jour intégrées. Guide : `INSTALLATION.md`.
 - Sous Windows (PowerShell 5.1) : recharger le PATH avant `git`/`npm`/`gh`, et utiliser `git commit -F fichier` pour les messages accentués sur plusieurs lignes.
 
 ## Design book (implémenté)
@@ -37,12 +38,21 @@ Mac cible : **Mac fixe M1, 16 Go, macOS Tahoe 26.x** (26.2.2 déclaré ; un expo
 - `src/main/book/` : `charte.ts` (mesures relevées sur ses PDF, en mm), `layout.ts` (pages = éléments positionnés : textes, images, formes, liens ; sommaire calculé), `html.ts` (aperçu et PDF, Poppins intégrée via @fontsource), `pptx.ts` (PptxGenJS : chaque élément est natif et modifiable), `data.ts` (assemblage depuis la base), `export.ts` (PDF imprimé par Chromium, boîte d'enregistrement, dernier dossier mémorisé).
 - **Une seule mise en page pour les deux formats** : modifier `layout.ts` change le PDF et le PPTX à l'identique.
 - Shopping list modernisée : une page par besoin (« Mon choix » en grand + 3 propositions, les suivantes sur des pages « suite » de 8 ; nombre illimité), « Voir le produit › » cliquable, puis une page « Récapitulatif de mes choix » avec le total (hors prix au m², au rouleau ou sur devis).
-- **Trois styles** au choix par projet (`projects.book_theme`) : Classique (le sien), Épuré, Contemporain. Même police, sobres, sans aplats (peu d'encre) ; rendus 3D toujours pleine largeur. Intercalaires **horizontaux et numérotés** (les titres verticaux étaient illisibles).
+- **Un seul style : Contemporain** (Classique et Épuré retirés ; la migration 004 met tous les projets en Contemporain, la colonne `projects.book_theme` n'est plus lue). Sobre, sans aplats sauf le disque de la 4e de couverture et les échantillons de teintes ; rendus 3D pleine largeur. Intercalaires **horizontaux et numérotés**, sans pied de page.
+- Couverture : « DESIGN BOOK », **m·deko en grand au centre**, client et mois en bas. 4e de couverture : grand disque taupe (logo, nom, coordonnées), QR code « Laisser un avis » posé sur son bord.
+- Teintes : section « Teintes et couleurs », **nuancier façon architecte** (grands rectangles numérotés, nom, référence, code couleur ; une marque par page). Marque par défaut : « Teintes et couleurs » (`DEFAULT_PAINT_BRAND`, ancien « Autre »).
 - **Shopping list par pièce** : les pièces de « Vos envies » (`needs.room_id`) rangent les besoins dans l'écran du projet et dans le book (articles sans pièce d'abord, puis un intercalaire par pièce ; le récapitulatif est groupé par pièce). `setRooms` garde l'identifiant des pièces conservées.
-- **Aperçu modifiable** (`BookPreview.tsx`, mêmes pages que le PDF rendues en React) : clic sur un texte (avant-propos, envies, fin, titre de besoin, légende de rendu) pour le changer ; double-clic sur une page pour poser une annotation (`book_notes`), déplaçable par sa poignée. Les textes à saisir vides (`placeholder`) ne sont pas exportés.
+- **Aperçu modifiable** (`BookPreview.tsx`, mêmes pages que le PDF rendues en React) : clic sur un texte pour le changer ; les éléments qui ont un `id` (unique dans la page) se déplacent en les faisant glisser et se redimensionnent par la poignée (une image garde ses proportions), A−/A+ change la taille d'un texte, « Remettre à sa place » / « Remettre la page en place » annulent (les textes écrits restent). Ces réglages vivent dans `book_adjustments` (projet, page, élément) et sont appliqués par `applyAdjustments` dans `layout.ts` : PDF et PPTX identiques. Les textes sans équivalent en base (clé `text:<page>|<élément>`) sont propres au book ; textes de la base : avant-propos, envies, fin, titre de besoin, légende. Les ids d'articles incluent l'id de l'article (`choice:<id>:name`) pour ne pas suivre un autre article. Double-clic : annotation (`book_notes`), déplaçable et redimensionnable comme le reste. Les textes à saisir vides (`placeholder`) ne sont pas exportés.
+- **Plusieurs photos pour « Mon choix »** : `need_images` (vide = première photo de l'article), choisies et rangées dans la fiche du besoin ; jusqu'à 4 dans le book (`photoGrid`).
 - Modèle de page partagé : `src/shared/book.ts` (éléments en mm, clés d'édition, clés de page).
+- Dans le projet : « Créer un nouvel article » (même fiche que la shopping list, `ArticleEditorSheet`) et « Modifier l'article » sur chaque article.
+- **Glisser-déposer partout** (`lib/sortable.ts`) : besoins (y compris d'une pièce à l'autre), propositions (lâchée sur « Mon choix » = devient le choix), pièces, teintes et artisans du projet, photos d'un article, rendus.
 - Alternatives automatiques : même sous-catégorie, prix le plus proche, avec photo de préférence, sans doublon de lien.
 - Réglages (⌘,) : coordonnées, QR code d'avis, textes modèles (`{pieces}` = pièces du projet).
+
+## Vérification de la base (implémentée)
+
+Écran « Vérification » (`src/main/check.ts`, `views/CheckView.tsx`) : `PRAGMA integrity_check` et `foreign_key_check`, emplacement et taille de la base, photos introuvables, produits disparus, doublons d'URL, articles d'un projet à la corbeille, prix inchangés depuis un an, articles sans photo, prix, lien ou catégorie. « Vérifier les liens » ouvre les pages produit (6 à la fois, interruptible) : 404/410 ou renvoi vers l'accueil = disparu ; refus des robots = à vérifier à la main.
 
 ## Dossiers de Mélanie
 
@@ -75,6 +85,18 @@ Le dépôt GitHub est **public**. Ne jamais y mettre :
 Avant chaque commit, vérifier les ajouts avec les motifs de `ressources/mots-sensibles.txt` (non versionné) : `git diff --cached | grep -i -E -f ressources/mots-sensibles.txt` doit être vide. Ne jamais citer un vrai nom de client, même en exemple dans un commentaire (utiliser « Mme Durand »).
 
 Les coordonnées de Mélanie, le QR code « avis », les textes et les artisans vivent **dans ses données** (`settings` et tables), jamais dans le code. Les tests utilisent des données fictives. La clé OpenRouter est stockée sur son Mac via `safeStorage` (Trousseau macOS). Les commits utilisent l'e-mail `noreply` de GitHub. Avant chaque commit, vérifier `git status` et le contenu ajouté.
+
+## Sécurité et confidentialité (revue du 29/10/2026)
+
+- **Tout reste sur l'ordinateur** : base, images, projets, coordonnées des clients. Rien n'est envoyé ailleurs, sauf trois cas :
+  1. **Assistant IA** : le rendu, les images de référence (réencodés en JPEG, donc sans métadonnées EXIF) et la demande écrite partent chez OpenRouter, puis chez Google ou OpenAI. Aucun nom, adresse ou coordonnée de client. OpenRouter ne garde pas les requêtes par défaut ; l'API d'images n'accepte pas `zdr` ni `data_collection` par requête, donc la confidentialité se règle sur le compte (Settings › Privacy : refuser l'entraînement sur les données, laisser « OpenRouter Use of Inputs/Outputs » et « Input & Output Logging » désactivés).
+  2. **Vérification des liens** : visite des pages produit (rien n'est envoyé).
+  3. **Mises à jour** : lecture de la dernière Release GitHub publique ; téléchargement accepté seulement depuis `https://github.com/NightXbX/Melanie-Mdeko/releases/download/`, taille et SHA-256 contrôlés.
+- Dossier `Fichiers de l’application` en `700` (Mac) : illisible par les autres comptes de l'ordinateur. `~/Documents` est en plus protégé par macOS (les autres applis doivent demander l'autorisation).
+- Clé OpenRouter chiffrée par `safeStorage`, jamais renvoyée à l'interface ; une sauvegarde de la base ne contient que la version chiffrée (inutilisable sur un autre Mac).
+- Interface en `sandbox` + `contextIsolation`, CSP stricte, IPC en listes blanches (`PROJECT_METHODS`, `AI_METHODS`), requêtes SQL paramétrées (les noms de table interpolés sont fixés dans le code), protocole `mdeko://` limité au dossier de données.
+- CI : jetons GitHub en lecture seule sauf pour la publication. **Qui peut pousser sur `main` peut livrer du code sur le Mac de Mélanie** : compte GitHub avec double authentification, et personne d'autre en écriture sur le dépôt.
+- Historique du dépôt vérifié : aucune base, aucun PDF ni rendu, aucune coordonnée, aucune clé.
 
 ## Données et sauvegarde
 
@@ -158,6 +180,12 @@ Une empreinte visuelle de chaque photo est calculée **en local** (petit modèle
 - Demandes typiques : ajouter des lumières, des petits objets de déco, ou **un meuble à partir d'une autre image** (photo d'un article de la shopping list ou image importée, à passer comme image de référence).
 - Pas de mention « retouché par IA » dans le book.
 
+**Implémenté** (`src/main/ai/`) :
+- `openrouter.ts` : connecteur `ImageEditProvider` sur l'API d'images d'OpenRouter (`POST /api/v1/images`, `input_references` en data URL : le rendu d'abord, puis les références ; `aspect_ratio` 16:9 et `resolution` 2K, relancé sans ces options si le moteur répond 400 ; image en `data[].b64_json`, coût en `usage.cost` en dollars). Erreurs traduites en français.
+- `versions.ts` : chaque proposition est une `render_versions` (moteur, demande, coût en centimes de dollar, éventuellement fractionnaires) ; « Garder » met `kept = 1` et `renders.active_version_id`. Le book et l'écran du projet montrent la version gardée, l'original reste (« Versions de ce rendu »). Dépense du mois = somme des coûts du mois ; plafond `ai_monthly_cap_cents` (10 $ par défaut) ; moteurs `ai_models` (duel par défaut : `google/gemini-3.1-flash-image` contre `openai/gpt-image-2`, liste proposée par `GET /api/v1/images/models`).
+- `index.ts` : clé chiffrée par `safeStorage` (réglage `openrouter_key`), rendu envoyé en JPEG 2048 px, références en 1024 px, les deux moteurs en parallèle, propositions dans un ordre tiré au sort (duel à l'aveugle), 4 min au plus, « Arrêter ». Instructions système : `instructions-v1.txt` (nouvelle version = nouveau fichier).
+- Interface : « Retoucher avec l'IA » sous chaque rendu (`AiSheet.tsx` : demande, idées, références depuis la shopping list ou l'ordinateur, propositions A/B, curseur avant/après, Garder / Réessayer, versions) ; Réglages : clé, moteurs, plafond, dépense, score du duel.
+
 ## Méthode (validée)
 
 **Une v0.1 « tout-en-un », testable d'un coup par Mélanie, puis des corrections quotidiennes** selon ses retours (captures d'écran transmises par le développeur). Pas de livraison module par module.
@@ -169,7 +197,7 @@ Une empreinte visuelle de chaque photo est calculée **en local** (petit modèle
 - Assistant IA : demande en langage naturel, image de référence, duel de 2 moteurs, avant/après, Garder ou Réessayer, compteur de dépense.
 - Bouton « Signaler », sauvegarde avant chaque mise à jour, mise à jour intégrée.
 
-**Repoussé à la v0.2 et après** : ressemblance visuelle (CLIP local) pour les alternatives, rubrique Inspirations, vérification des liens en tâche de fond dans l'appli (en attendant, un script côté développeur), préremplissage depuis un lien produit, budget par projet, zone à peindre pour l'IA, signature Apple.
+**Repoussé à la v0.2 et après** : ressemblance visuelle (CLIP local) pour les alternatives, rubrique Inspirations, vérification des liens automatique en tâche de fond (pour l'instant à la demande, écran Vérification), mise à jour automatique des prix, préremplissage depuis un lien produit, budget par projet, zone à peindre pour l'IA, signature Apple.
 
 **Boucle quotidienne** : retour de Mélanie → correction → push → build macOS par GitHub Actions (~10 min) → mise à jour au prochain lancement.
 
@@ -179,6 +207,8 @@ Une empreinte visuelle de chaque photo est calculée **en local** (petit modèle
 - Le numéro de version est visible et joint à chaque retour.
 
 **Mise à jour pendant le test** : système maison gratuit. L'appli télécharge la nouvelle version depuis GitHub Releases et remplace son bundle (téléchargée par l'appli elle-même, la nouvelle version n'est pas mise en quarantaine). Signature Apple et `electron-updater` après le test si on continue.
+
+Implémenté (`src/main/update/`) : chaque push sur `main` publie une Release `v0.1.<run_number>` (la CI règle la version de `package.json`, dont seuls les deux premiers nombres sont à changer à la main). `release.ts` lit `releases/latest` (API GitHub publique), compare les versions et choisit le fichier (`-arm64.zip` sur Mac, `-windows-installation.exe` sur Windows). `index.ts` : vérification au démarrage (15 s) puis toutes les 6 h, téléchargement avec progression, contrôle de la taille et du SHA-256 (`digest` GitHub), sauvegarde `avant-mise-a-jour`, puis sur Mac `ditto` + script qui remplace le bundle après la fermeture et le rouvre (retour à l'ancienne version en cas d'échec), sur Windows installateur NSIS en silence (`/S --force-run`). Inactif en développement. Interface : `UpdateBar.tsx` (version et « Installer ») et menu « Rechercher une mise à jour… ».
 
 **Installation** : faite par le développeur, présent sur place (autorisation Gatekeeper « Ouvrir quand même », clé OpenRouter, import des données).
 

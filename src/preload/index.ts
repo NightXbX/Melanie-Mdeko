@@ -1,12 +1,15 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
-import { IPC, PROJECT_METHODS, type MdekoApi, type MenuCommand, type ProjectsApi } from '@shared/api'
+import { AI_METHODS, IPC, PROJECT_METHODS, type AiApi, type LinkCheckProgress, type MdekoApi, type MenuCommand, type ProjectsApi, type UpdateInfo } from '@shared/api'
 
 const projects = Object.fromEntries(
   PROJECT_METHODS.map((method) => [method, (...args: unknown[]) => ipcRenderer.invoke(IPC.projects, method, ...args)])
 ) as unknown as ProjectsApi
 
+const ai = Object.fromEntries(AI_METHODS.map((method) => [method, (...args: unknown[]) => ipcRenderer.invoke(IPC.ai, method, ...args)])) as unknown as AiApi
+
 const api: MdekoApi = {
   projects,
+  ai,
   getAppInfo: () => ipcRenderer.invoke(IPC.getAppInfo),
   openDataFolder: () => ipcRenderer.invoke(IPC.openDataFolder),
   backupNow: () => ipcRenderer.invoke(IPC.backupNow),
@@ -37,7 +40,28 @@ const api: MdekoApi = {
     return () => ipcRenderer.removeListener(IPC.importProgress, handler)
   },
   // Chemin d'un fichier glissé depuis le Finder (le PDF à importer).
-  pathForFile: (file) => webUtils.getPathForFile(file)
+  pathForFile: (file) => webUtils.getPathForFile(file),
+  checkDatabase: () => ipcRenderer.invoke(IPC.checkDatabase),
+  checkLinks: () => ipcRenderer.invoke(IPC.checkLinks),
+  stopLinkCheck: () => ipcRenderer.invoke(IPC.stopLinkCheck),
+  onLinkProgress: (listener) => {
+    const handler = (_e: IpcRendererEvent, progress: LinkCheckProgress) => listener(progress)
+    ipcRenderer.on(IPC.linkProgress, handler)
+    return () => ipcRenderer.removeListener(IPC.linkProgress, handler)
+  },
+  showDatabase: () => ipcRenderer.invoke(IPC.showDatabase),
+  checkUpdate: () => ipcRenderer.invoke(IPC.checkUpdate),
+  installUpdate: () => ipcRenderer.invoke(IPC.installUpdate),
+  onUpdateAvailable: (listener) => {
+    const handler = (_e: IpcRendererEvent, update: UpdateInfo) => listener(update)
+    ipcRenderer.on(IPC.updateAvailable, handler)
+    return () => ipcRenderer.removeListener(IPC.updateAvailable, handler)
+  },
+  onUpdateProgress: (listener) => {
+    const handler = (_e: IpcRendererEvent, done: number, total: number) => listener(done, total)
+    ipcRenderer.on(IPC.updateProgress, handler)
+    return () => ipcRenderer.removeListener(IPC.updateProgress, handler)
+  }
 }
 
 contextBridge.exposeInMainWorld('mdeko', api)
