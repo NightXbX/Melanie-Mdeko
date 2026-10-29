@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, renameSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { app } from 'electron'
 
@@ -42,6 +42,8 @@ export function dataPathsIn(home: string): DataPaths {
   for (const dir of [paths.root, paths.images, paths.backups, paths.projects]) {
     mkdirSync(dir, { recursive: true })
   }
+  // Base, images et sauvegardes : lisibles seulement par sa session (pas par les autres comptes du Mac).
+  if (process.platform !== 'win32') chmodSync(root, 0o700)
   return paths
 }
 

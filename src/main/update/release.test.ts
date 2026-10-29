@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { availableUpdate, isNewer, macSwapScript } from './release'
 
+const DL = 'https://github.com/NightXbX/Melanie-Mdeko/releases/download/v0.1.12'
 const release = {
   tag_name: 'v0.1.12',
   body: 'Corrections',
   assets: [
-    { name: 'Mdeko-0.1.12-arm64.dmg', browser_download_url: 'https://x/dmg', size: 10 },
-    { name: 'Mdeko-0.1.12-arm64.zip', browser_download_url: 'https://x/zip', size: 20, digest: 'sha256:abc' },
-    { name: 'Mdeko-0.1.12-windows-installation.exe', browser_download_url: 'https://x/exe', size: 30 }
+    { name: 'Mdeko-0.1.12-arm64.dmg', browser_download_url: `${DL}/Mdeko-0.1.12-arm64.dmg`, size: 10 },
+    { name: 'Mdeko-0.1.12-arm64.zip', browser_download_url: `${DL}/Mdeko-0.1.12-arm64.zip`, size: 20, digest: 'sha256:abc' },
+    { name: 'Mdeko-0.1.12-windows-installation.exe', browser_download_url: `${DL}/Mdeko-0.1.12-windows-installation.exe`, size: 30 }
   ]
 }
 
@@ -23,12 +24,15 @@ describe('mises à jour', () => {
     expect(availableUpdate(release, '0.1.3', 'darwin')).toEqual({
       version: '0.1.12',
       notes: 'Corrections',
-      asset: { name: 'Mdeko-0.1.12-arm64.zip', url: 'https://x/zip', size: 20, sha256: 'abc' }
+      asset: { name: 'Mdeko-0.1.12-arm64.zip', url: `${DL}/Mdeko-0.1.12-arm64.zip`, size: 20, sha256: 'abc' }
     })
-    expect(availableUpdate(release, '0.1.3', 'win32')?.asset.url).toBe('https://x/exe')
+    expect(availableUpdate(release, '0.1.3', 'win32')?.asset.name).toBe('Mdeko-0.1.12-windows-installation.exe')
     expect(availableUpdate(release, '0.1.12', 'darwin')).toBeNull()
     expect(availableUpdate({ ...release, draft: true }, '0.1.3', 'darwin')).toBeNull()
     expect(availableUpdate(release, '0.1.3', 'linux')).toBeNull()
+    // Un fichier qui ne vient pas des Releases de ce dépôt est refusé.
+    const elsewhere = { ...release, assets: [{ name: 'Mdeko-0.1.12-arm64.zip', browser_download_url: 'https://exemple.fr/Mdeko-0.1.12-arm64.zip', size: 20 }] }
+    expect(availableUpdate(elsewhere, '0.1.3', 'darwin')).toBeNull()
   })
 
   it('prépare le remplacement de l’appli sur Mac, avec retour en arrière', () => {

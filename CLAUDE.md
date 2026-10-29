@@ -86,6 +86,18 @@ Avant chaque commit, vérifier les ajouts avec les motifs de `ressources/mots-se
 
 Les coordonnées de Mélanie, le QR code « avis », les textes et les artisans vivent **dans ses données** (`settings` et tables), jamais dans le code. Les tests utilisent des données fictives. La clé OpenRouter est stockée sur son Mac via `safeStorage` (Trousseau macOS). Les commits utilisent l'e-mail `noreply` de GitHub. Avant chaque commit, vérifier `git status` et le contenu ajouté.
 
+## Sécurité et confidentialité (revue du 29/10/2026)
+
+- **Tout reste sur l'ordinateur** : base, images, projets, coordonnées des clients. Rien n'est envoyé ailleurs, sauf trois cas :
+  1. **Assistant IA** : le rendu, les images de référence (réencodés en JPEG, donc sans métadonnées EXIF) et la demande écrite partent chez OpenRouter, puis chez Google ou OpenAI. Aucun nom, adresse ou coordonnée de client. OpenRouter ne garde pas les requêtes par défaut ; l'API d'images n'accepte pas `zdr` ni `data_collection` par requête, donc la confidentialité se règle sur le compte (Settings › Privacy : refuser l'entraînement sur les données, laisser « OpenRouter Use of Inputs/Outputs » et « Input & Output Logging » désactivés).
+  2. **Vérification des liens** : visite des pages produit (rien n'est envoyé).
+  3. **Mises à jour** : lecture de la dernière Release GitHub publique ; téléchargement accepté seulement depuis `https://github.com/NightXbX/Melanie-Mdeko/releases/download/`, taille et SHA-256 contrôlés.
+- Dossier `Fichiers de l’application` en `700` (Mac) : illisible par les autres comptes de l'ordinateur. `~/Documents` est en plus protégé par macOS (les autres applis doivent demander l'autorisation).
+- Clé OpenRouter chiffrée par `safeStorage`, jamais renvoyée à l'interface ; une sauvegarde de la base ne contient que la version chiffrée (inutilisable sur un autre Mac).
+- Interface en `sandbox` + `contextIsolation`, CSP stricte, IPC en listes blanches (`PROJECT_METHODS`, `AI_METHODS`), requêtes SQL paramétrées (les noms de table interpolés sont fixés dans le code), protocole `mdeko://` limité au dossier de données.
+- CI : jetons GitHub en lecture seule sauf pour la publication. **Qui peut pousser sur `main` peut livrer du code sur le Mac de Mélanie** : compte GitHub avec double authentification, et personne d'autre en écriture sur le dépôt.
+- Historique du dépôt vérifié : aucune base, aucun PDF ni rendu, aucune coordonnée, aucune clé.
+
 ## Données et sauvegarde
 
 - Dossier : `~/Documents/Melanie Mdeko/Fichiers de l’application/` → `mdeko.sqlite`, `images/` (chemins relatifs en base), `sauvegardes/`. Compatible Time Machine.

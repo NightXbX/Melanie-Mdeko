@@ -40,9 +40,19 @@ export function isNewer(candidate: string, current: string): boolean {
 export function pickAsset(release: GithubRelease, platform: string): ReleaseAsset | null {
   const wanted = platform === 'darwin' ? /-arm64\.zip$/ : platform === 'win32' ? /-windows-installation\.exe$/ : null
   const a = wanted && release.assets?.find((x) => wanted.test(x.name))
-  if (!a) return null
+  if (!a || !isGithubDownload(a.browser_download_url)) return null
   const sha = a.digest?.startsWith('sha256:') ? a.digest.slice(7) : null
   return { name: a.name, url: a.browser_download_url, size: a.size, sha256: sha }
+}
+
+// On ne télécharge que depuis GitHub, en HTTPS, et seulement depuis ce dépôt.
+function isGithubDownload(url: string): boolean {
+  try {
+    const u = new URL(url)
+    return u.protocol === 'https:' && u.hostname === 'github.com' && u.pathname.startsWith(`/${REPOSITORY}/releases/download/`)
+  } catch {
+    return false
+  }
 }
 
 // Dernière version publiée, si elle est plus récente que celle qui tourne et a un fichier pour cet ordinateur.
