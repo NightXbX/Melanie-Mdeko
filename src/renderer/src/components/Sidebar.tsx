@@ -1,4 +1,5 @@
 import { Icon, type IconName } from './Icon'
+import { UpdateBar } from './UpdateBar'
 
 export type View = 'shopping' | 'projects' | 'check' | 'trash'
 
@@ -31,6 +32,7 @@ export function Sidebar({ current, onSelect }: Props) {
         <div className="sidebar-section sidebar-bottom">
           {item('check', 'shield', 'Vérification')}
           {item('trash', 'trash', 'Corbeille')}
+          <UpdateBar />
         </div>
       </nav>
     </aside>

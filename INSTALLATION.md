@@ -11,7 +11,7 @@ Deux installateurs sont construits automatiquement par GitHub Actions (workflow 
 
 **Version de test (n'importe quelle branche)** : GitHub › onglet *Actions* › *Build Mac et Windows* › *Run workflow* (choisir la branche) › attendre la fin (~10 min) › en bas de la page du passage, section *Artifacts* : `Mdeko-mac-arm64` et `Mdeko-windows` (des `.zip` qui contiennent les installateurs, gardés 14 jours).
 
-**Version officielle** : créer un tag, par exemple après avoir mis `"version": "0.1.0"` dans `package.json` :
+**Version officielle (Release)** : chaque push sur `main` publie automatiquement une Release numérotée `0.1.N`. Les applis déjà installées la proposent d'elles-mêmes (voir « Mises à jour » plus bas). On peut aussi publier un numéro choisi avec un tag, après l'avoir mis dans `package.json` :
 
 ```bash
 git tag v0.1.0
@@ -38,7 +38,7 @@ Les deux installateurs apparaissent dans *Releases*. Le numéro de version est v
 
 Au premier lancement, Mdeko crée `Documents/Melanie Mdeko/` avec `Projets/` et `Fichiers de l’application/` (la base, les images, les sauvegardes).
 
-**Mettre à jour** : quitter Mdeko, glisser la nouvelle version dans Applications (remplacer). Les données ne sont pas touchées : elles vivent dans Documents, et une copie de la base est faite avant toute évolution de sa structure.
+**Mettre à jour** : voir « Mises à jour » plus bas, rien à retélécharger.
 
 ## 3. Sur le PC (Windows), pour tester
 
@@ -50,7 +50,19 @@ Pour désinstaller : Paramètres › Applications › Mdeko. Le dossier `Documen
 
 Sans installer, `npm run dev` lance l'appli depuis le code (données dans `./donnees`). `npm run dist:win` construit l'installateur Windows en local, dans `release/`.
 
-## 4. Mettre la shopping list dans l'appli
+## 4. Mises à jour (sans rien retélécharger)
+
+Il suffit d'installer Mdeko **une seule fois**, depuis une Release (pas depuis les *Artifacts* d'Actions, dont le numéro de version reste 0.1.0).
+
+- Au démarrage, puis toutes les 6 heures, Mdeko regarde la dernière Release sur GitHub. S'il y en a une plus récente, un encadré « Nouvelle version » apparaît en bas de la barre latérale.
+- **Installer** : Mdeko télécharge la nouvelle version, vérifie le fichier, fait une copie de la base, se ferme puis se rouvre à jour. Sur Mac, la version téléchargée par l'appli n'est pas bloquée par Gatekeeper.
+- À la demande : Mdeko › Rechercher une mise à jour… (Mac), Aide › Rechercher une mise à jour… (Windows).
+- Le numéro de version est affiché en bas de la barre latérale : le joindre à chaque retour.
+- Sur Mac, l'appli doit être dans **Applications** pour pouvoir se remplacer.
+
+Pour publier une mise à jour : fusionner les changements sur `main`. Environ 10 minutes plus tard, la Release est en ligne.
+
+## 5. Mettre la shopping list dans l'appli
 
 Deux façons, sur le Mac comme sur le PC :
 

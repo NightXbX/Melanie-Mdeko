@@ -29,7 +29,7 @@ Mac cible : **Mac fixe M1, 16 Go, macOS Tahoe 26.x** (26.2.2 déclaré ; un expo
 - Images : protocole interne `mdeko://media/<chemin>` et `mdeko://miniature/<sha256>` (miniatures JPEG 360 px dans `images/miniatures/`, créées par la migration ; repli sur l'image complète).
 - `src/preload/` : pont sécurisé (`window.mdeko`). `src/shared/api.ts` : contrat IPC commun. `src/renderer/` : interface React.
 - Fenêtre en `sandbox` + `contextIsolation`, aucun accès Node dans l'interface. Les liens web s'ouvrent dans le navigateur.
-- CI : `.github/workflows/build-mac.yml` (runner `macos-latest`) : typecheck, tests, build `.dmg` + `.zip` arm64, signature ad hoc vérifiée par `codesign`. Un tag `vX.Y.Z` crée une Release GitHub (source des mises à jour).
+- CI : `.github/workflows/build-mac.yml` : Mac (`macos-latest` : typecheck, tests, `.dmg` + `.zip` arm64, signature ad hoc vérifiée par `codesign`) et Windows (`windows-latest` : installateur NSIS). Chaque push sur `main` (ou un tag `vX.Y.Z`) publie une Release GitHub, source des mises à jour intégrées. Guide : `INSTALLATION.md`.
 - Sous Windows (PowerShell 5.1) : recharger le PATH avant `git`/`npm`/`gh`, et utiliser `git commit -F fichier` pour les messages accentués sur plusieurs lignes.
 
 ## Design book (implémenté)
@@ -194,6 +194,8 @@ Une empreinte visuelle de chaque photo est calculée **en local** (petit modèle
 - Le numéro de version est visible et joint à chaque retour.
 
 **Mise à jour pendant le test** : système maison gratuit. L'appli télécharge la nouvelle version depuis GitHub Releases et remplace son bundle (téléchargée par l'appli elle-même, la nouvelle version n'est pas mise en quarantaine). Signature Apple et `electron-updater` après le test si on continue.
+
+Implémenté (`src/main/update/`) : chaque push sur `main` publie une Release `v0.1.<run_number>` (la CI règle la version de `package.json`, dont seuls les deux premiers nombres sont à changer à la main). `release.ts` lit `releases/latest` (API GitHub publique), compare les versions et choisit le fichier (`-arm64.zip` sur Mac, `-windows-installation.exe` sur Windows). `index.ts` : vérification au démarrage (15 s) puis toutes les 6 h, téléchargement avec progression, contrôle de la taille et du SHA-256 (`digest` GitHub), sauvegarde `avant-mise-a-jour`, puis sur Mac `ditto` + script qui remplace le bundle après la fermeture et le rouvre (retour à l'ancienne version en cas d'échec), sur Windows installateur NSIS en silence (`/S --force-run`). Inactif en développement. Interface : `UpdateBar.tsx` (version et « Installer ») et menu « Rechercher une mise à jour… ».
 
 **Installation** : faite par le développeur, présent sur place (autorisation Gatekeeper « Ouvrir quand même », clé OpenRouter, import des données).
 

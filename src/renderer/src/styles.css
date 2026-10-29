@@ -2379,3 +2379,32 @@ img.pv {
   margin: 6px 0 0;
   font-size: 14px;
 }
+
+/* Mise à jour intégrée (bas de la barre latérale) */
+
+.update-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px 4px;
+}
+
+.update-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--window-bg);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  font-size: 12px;
+}
+
+.update-card progress {
+  width: 100%;
+}
+
+.update-version {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}

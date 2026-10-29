@@ -24,6 +24,7 @@ export function buildMenu(actions: MenuActions): void {
             label: name,
             submenu: [
               { role: 'about', label: `À propos de ${name}` },
+              { label: 'Rechercher une mise à jour…', click: () => send('check-update') },
               sep,
               { label: 'Réglages…', accelerator: 'CmdOrCtrl+,', click: () => send('settings') },
               sep,
@@ -93,7 +94,10 @@ export function buildMenu(actions: MenuActions): void {
     {
       label: 'Aide',
       role: 'help',
-      submenu: [{ label: 'Signaler un problème ou une idée…', enabled: false }]
+      submenu: [
+        ...(isMac ? [] : [{ label: 'Rechercher une mise à jour…', click: () => send('check-update') }]),
+        { label: 'Signaler un problème ou une idée…', enabled: false }
+      ]
     }
   ]
 

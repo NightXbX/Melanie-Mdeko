@@ -222,7 +222,14 @@ export interface UndoResult {
   articleId: number
 }
 
-export type MenuCommand = 'undo' | 'new-article' | 'new-project' | 'settings' | 'import'
+export type MenuCommand = 'undo' | 'new-article' | 'new-project' | 'settings' | 'import' | 'check-update'
+
+// Nouvelle version publiée sur GitHub.
+export interface UpdateInfo {
+  version: string
+  notes: string
+  sizeBytes: number
+}
 
 // Bilan d'un import de PDF (design book ou shopping list).
 export interface ImportSummary {
@@ -289,6 +296,10 @@ export interface MdekoApi {
   stopLinkCheck(): Promise<void>
   onLinkProgress(listener: (progress: LinkCheckProgress) => void): () => void
   showDatabase(): Promise<void>
+  checkUpdate(): Promise<UpdateInfo | null>
+  installUpdate(): Promise<void>
+  onUpdateAvailable(listener: (update: UpdateInfo) => void): () => void
+  onUpdateProgress(listener: (done: number, total: number) => void): () => void
 }
 
 export const IPC = {
@@ -318,6 +329,10 @@ export const IPC = {
   stopLinkCheck: 'check:stop-links',
   linkProgress: 'check:link-progress',
   showDatabase: 'app:show-database',
+  checkUpdate: 'update:check',
+  installUpdate: 'update:install',
+  updateAvailable: 'update:available',
+  updateProgress: 'update:progress',
   // Projets : un canal unique, la méthode appelée est passée en premier argument.
   projects: 'projects:call',
   ai: 'ai:call'

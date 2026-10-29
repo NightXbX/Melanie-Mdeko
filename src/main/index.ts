@@ -10,6 +10,7 @@ import { registerProjectsIpc } from './projects-ipc'
 import { handleMedia, registerMediaScheme } from './media'
 import { buildMenu } from './menu'
 import { resolveDataPaths, type DataPaths } from './paths'
+import { registerUpdates } from './update'
 
 const HOUR = 60 * 60 * 1000
 
@@ -58,6 +59,7 @@ function start(): void {
   registerIpc(db, paths, backupNow)
   registerProjectsIpc(db, paths)
   registerAiIpc(db, paths)
+  registerUpdates(db, paths)
   buildMenu({
     backupNow: () => backupNow(),
     openDataFolder: () => void shell.openPath(paths.home)

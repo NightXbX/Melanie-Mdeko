@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
-import { AI_METHODS, IPC, PROJECT_METHODS, type AiApi, type LinkCheckProgress, type MdekoApi, type MenuCommand, type ProjectsApi } from '@shared/api'
+import { AI_METHODS, IPC, PROJECT_METHODS, type AiApi, type LinkCheckProgress, type MdekoApi, type MenuCommand, type ProjectsApi, type UpdateInfo } from '@shared/api'
 
 const projects = Object.fromEntries(
   PROJECT_METHODS.map((method) => [method, (...args: unknown[]) => ipcRenderer.invoke(IPC.projects, method, ...args)])
@@ -49,7 +49,19 @@ const api: MdekoApi = {
     ipcRenderer.on(IPC.linkProgress, handler)
     return () => ipcRenderer.removeListener(IPC.linkProgress, handler)
   },
-  showDatabase: () => ipcRenderer.invoke(IPC.showDatabase)
+  showDatabase: () => ipcRenderer.invoke(IPC.showDatabase),
+  checkUpdate: () => ipcRenderer.invoke(IPC.checkUpdate),
+  installUpdate: () => ipcRenderer.invoke(IPC.installUpdate),
+  onUpdateAvailable: (listener) => {
+    const handler = (_e: IpcRendererEvent, update: UpdateInfo) => listener(update)
+    ipcRenderer.on(IPC.updateAvailable, handler)
+    return () => ipcRenderer.removeListener(IPC.updateAvailable, handler)
+  },
+  onUpdateProgress: (listener) => {
+    const handler = (_e: IpcRendererEvent, done: number, total: number) => listener(done, total)
+    ipcRenderer.on(IPC.updateProgress, handler)
+    return () => ipcRenderer.removeListener(IPC.updateProgress, handler)
+  }
 }
 
 contextBridge.exposeInMainWorld('mdeko', api)
