@@ -1,0 +1,29 @@
+# Données privées : jamais dans le dépôt public
+ressources/
+donnees/
+data/
+*.pdf
+*.pptx
+*.key
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+.env
+.env.*
+!.env.example
+
+# Dépendances et builds
+node_modules/
+out/
+dist/
+release/
+*.log
+
+# Système
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Outils
+.claude/settings.local.json
