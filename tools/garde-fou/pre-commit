@@ -1,0 +1,13 @@
+#!/bin/sh
+# Garde-fou du dépôt public : bloque un commit qui ajouterait une donnée sensible.
+# Les motifs sont dans ressources/mots-sensibles.txt (un par ligne), jamais versionné.
+# Activation (une seule fois) : git config core.hooksPath tools/garde-fou
+liste="ressources/mots-sensibles.txt"
+[ -f "$liste" ] || exit 0
+trouve=$(git diff --cached -U0 --no-color | grep '^+' | grep -v '^+++' | grep -i -E -f "$liste")
+if [ -n "$trouve" ]; then
+  echo "Commit bloqué : donnée sensible détectée (motifs de $liste) :"
+  echo "$trouve" | head -n 5
+  exit 1
+fi
+exit 0

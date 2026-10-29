@@ -24,3 +24,11 @@ python tools/migration/textes_par_defaut.py "ressources/<un design book>.pdf" do
 
 - `completer_photos.py` récupère la photo annoncée par la page produit (og:image) des articles sans photo, et marque les liens morts. Il se présente honnêtement et ne contourne pas les sites qui refusent les accès automatiques : ceux-là sont listés dans `photos-non-recuperees.txt` (photo à glisser à la main depuis le site).
 - `textes_par_defaut.py` range dans les réglages l'avant-propos, « Vos envies » (pièces remplacées par `{pieces}`), « C'est à vous », les coordonnées et le QR code d'avis.
+
+## Importer un design book existant
+
+```
+python tools/migration/importer_design_book.py "ressources/<design book>.pdf" "donnees/Fichiers de l’application"
+```
+
+Pour un projet que Mélanie a déjà commencé dans PowerPoint (exporté en PDF) : le projet est créé dans l'appli (client, mois, pièces, « Vos envies », rendus et vignettes, shopping list par sous-catégorie avec « Mon choix » + propositions, teintes, artisans). Les articles déjà présents dans la shopping list sont réutilisés (même lien, ou même photo et même nom), les nouveaux y sont ajoutés. Avec une grande shopping list PDF (sans couverture de client), seuls les nouveaux articles sont ajoutés. Fermer l'appli avant l'import.

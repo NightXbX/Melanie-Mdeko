@@ -49,6 +49,7 @@ SECTIONS: dict[str, tuple[str, str | None]] = {
     "fauteuils": ("Assises", "Fauteuils"),
     "canapes": ("Assises", "Canapés"),
     "coussinsplaid": ("Textiles", None),
+    "coussins": ("Textiles", "Coussins"),
     "plaids": ("Textiles", "Plaids"),
     "cadres": ("Décoration", "Cadres"),
     "tableaux": ("Décoration", "Tableaux & affiches"),
