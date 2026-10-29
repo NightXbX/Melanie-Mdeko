@@ -3,6 +3,7 @@ import type { ProjectRender, RenderSection } from '@shared/projects'
 import { useApp } from '../../app-context'
 import { hasImages, readDrop, uploadDrop, type DropContent } from '../../lib/images'
 import { Icon } from '../Icon'
+import { AiSheet } from './AiSheet'
 import type { SectionProps } from './ProjectEditor'
 import { SectionHeader } from './sections'
 
@@ -12,6 +13,7 @@ export function RendersSection({ project, reload }: SectionProps) {
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [moving, setMoving] = useState<number | null>(null)
+  const [retouching, setRetouching] = useState<number | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const insetFor = useRef<number | null>(null)
   const insetInput = useRef<HTMLInputElement>(null)
@@ -96,6 +98,7 @@ export function RendersSection({ project, reload }: SectionProps) {
               <div className="render-image">
                 <img src={r.thumbnailUrl} alt="" draggable={false} />
                 <span className="render-number">{i + 1}</span>
+                {r.edited && <span className="render-edited">Retouché</span>}
                 <button type="button" className="editor-thumb-remove render-remove" aria-label="Retirer ce rendu" onClick={async () => {
                   await window.mdeko.projects.removeRender(r.id)
                   await reload()
@@ -103,6 +106,9 @@ export function RendersSection({ project, reload }: SectionProps) {
                   <Icon name="xmark" size={10} />
                 </button>
               </div>
+              <button type="button" className="button render-ai" onClick={() => setRetouching(r.id)}>
+                Retoucher avec l’IA
+              </button>
               <div className="render-tools">
                 <select value={r.section} onChange={(e) => void update(r, { section: e.target.value as RenderSection })}>
                   <option value="plans">Plans</option>
@@ -131,6 +137,9 @@ export function RendersSection({ project, reload }: SectionProps) {
         </div>
       )}
 
+      {retouching !== null && project.renders.some((r) => r.id === retouching) && (
+        <AiSheet render={project.renders.find((r) => r.id === retouching)!} onClose={() => setRetouching(null)} onChanged={() => void reload()} />
+      )}
       <input
         ref={fileInput}
         type="file"

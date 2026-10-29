@@ -1,12 +1,15 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
-import { IPC, PROJECT_METHODS, type LinkCheckProgress, type MdekoApi, type MenuCommand, type ProjectsApi } from '@shared/api'
+import { AI_METHODS, IPC, PROJECT_METHODS, type AiApi, type LinkCheckProgress, type MdekoApi, type MenuCommand, type ProjectsApi } from '@shared/api'
 
 const projects = Object.fromEntries(
   PROJECT_METHODS.map((method) => [method, (...args: unknown[]) => ipcRenderer.invoke(IPC.projects, method, ...args)])
 ) as unknown as ProjectsApi
 
+const ai = Object.fromEntries(AI_METHODS.map((method) => [method, (...args: unknown[]) => ipcRenderer.invoke(IPC.ai, method, ...args)])) as unknown as AiApi
+
 const api: MdekoApi = {
   projects,
+  ai,
   getAppInfo: () => ipcRenderer.invoke(IPC.getAppInfo),
   openDataFolder: () => ipcRenderer.invoke(IPC.openDataFolder),
   backupNow: () => ipcRenderer.invoke(IPC.backupNow),

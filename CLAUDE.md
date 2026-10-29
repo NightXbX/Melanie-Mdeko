@@ -167,6 +167,12 @@ Une empreinte visuelle de chaque photo est calculée **en local** (petit modèle
 - Demandes typiques : ajouter des lumières, des petits objets de déco, ou **un meuble à partir d'une autre image** (photo d'un article de la shopping list ou image importée, à passer comme image de référence).
 - Pas de mention « retouché par IA » dans le book.
 
+**Implémenté** (`src/main/ai/`) :
+- `openrouter.ts` : connecteur `ImageEditProvider` sur l'API d'images d'OpenRouter (`POST /api/v1/images`, `input_references` en data URL : le rendu d'abord, puis les références ; `aspect_ratio` 16:9 et `resolution` 2K, relancé sans ces options si le moteur répond 400 ; image en `data[].b64_json`, coût en `usage.cost` en dollars). Erreurs traduites en français.
+- `versions.ts` : chaque proposition est une `render_versions` (moteur, demande, coût en centimes de dollar, éventuellement fractionnaires) ; « Garder » met `kept = 1` et `renders.active_version_id`. Le book et l'écran du projet montrent la version gardée, l'original reste (« Versions de ce rendu »). Dépense du mois = somme des coûts du mois ; plafond `ai_monthly_cap_cents` (10 $ par défaut) ; moteurs `ai_models` (duel par défaut : `google/gemini-3.1-flash-image` contre `openai/gpt-image-2`, liste proposée par `GET /api/v1/images/models`).
+- `index.ts` : clé chiffrée par `safeStorage` (réglage `openrouter_key`), rendu envoyé en JPEG 2048 px, références en 1024 px, les deux moteurs en parallèle, propositions dans un ordre tiré au sort (duel à l'aveugle), 4 min au plus, « Arrêter ». Instructions système : `instructions-v1.txt` (nouvelle version = nouveau fichier).
+- Interface : « Retoucher avec l'IA » sous chaque rendu (`AiSheet.tsx` : demande, idées, références depuis la shopping list ou l'ordinateur, propositions A/B, curseur avant/après, Garder / Réessayer, versions) ; Réglages : clé, moteurs, plafond, dépense, score du duel.
+
 ## Méthode (validée)
 
 **Une v0.1 « tout-en-un », testable d'un coup par Mélanie, puis des corrections quotidiennes** selon ses retours (captures d'écran transmises par le développeur). Pas de livraison module par module.

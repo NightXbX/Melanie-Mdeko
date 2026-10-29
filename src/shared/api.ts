@@ -123,6 +123,52 @@ export interface ProjectsApi {
   openFolder(id: number): Promise<void>
 }
 
+// --- Assistant IA (retouche des rendus) ---
+
+export interface AiSettings {
+  models: string[] // 1 moteur, ou 2 pour le duel
+  capCents: number // plafond de dépense du mois
+}
+
+export interface AiStatus {
+  hasKey: boolean
+  canStoreKey: boolean // le Trousseau (Mac) ou le coffre de Windows est disponible
+  settings: AiSettings
+  spentCents: number // ce mois-ci
+  estimateCents: number // coût probable d'une demande (toutes propositions comprises)
+  score: { model: string; kept: number; proposed: number }[]
+}
+
+// Proposition d'un moteur ; le nom du moteur n'est pas montré pendant le duel, pour ne pas influencer le choix.
+export interface AiProposal {
+  versionId: number | null
+  imageUrl: string | null
+  costCents: number
+  error: string | null
+}
+
+export interface AiVersion {
+  id: number | null // null : l'original
+  imageUrl: string
+  prompt: string | null
+  createdAt: string | null
+  active: boolean
+}
+
+export interface AiApi {
+  status(): Promise<AiStatus>
+  setKey(key: string | null): Promise<void>
+  saveSettings(settings: Partial<AiSettings>): Promise<void>
+  listModels(): Promise<{ id: string; name: string }[]>
+  edit(renderId: number, prompt: string, referenceImageIds: number[]): Promise<AiProposal[]>
+  cancel(): Promise<void>
+  keep(versionId: number): Promise<void>
+  history(renderId: number): Promise<AiVersion[]>
+  show(renderId: number, versionId: number | null): Promise<void>
+}
+
+export const AI_METHODS = ['status', 'setKey', 'saveSettings', 'listModels', 'edit', 'cancel', 'keep', 'history', 'show'] as const satisfies readonly (keyof AiApi)[]
+
 // --- Édition ---
 
 export interface CategoryOption {
@@ -215,6 +261,7 @@ export interface LinkCheckProgress {
 
 export interface MdekoApi {
   projects: ProjectsApi
+  ai: AiApi
   getAppInfo(): Promise<AppInfo>
   openDataFolder(): Promise<void>
   backupNow(): Promise<string>
@@ -272,7 +319,8 @@ export const IPC = {
   linkProgress: 'check:link-progress',
   showDatabase: 'app:show-database',
   // Projets : un canal unique, la méthode appelée est passée en premier argument.
-  projects: 'projects:call'
+  projects: 'projects:call',
+  ai: 'ai:call'
 } as const
 
 export const PROJECT_METHODS = [

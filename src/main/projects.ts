@@ -120,13 +120,15 @@ export function setRooms(db: DatabaseSync, projectId: number, names: string[]): 
   touch(db, projectId)
 }
 
-// --- Rendus 3D ------------------------------------------------------------------------------------
+// --- Rendus 3D -----------------------------------------------------------------------------------
 
+// Image montrée : la version retouchée gardée, sinon l'original.
 function getRenders(db: DatabaseSync, projectId: number): ProjectRender[] {
   const rows = db
     .prepare(
-      `SELECT r.id, r.section, r.caption, r.image_id, i.rel_path, i.sha256, ins.rel_path AS inset
-       FROM renders r JOIN images i ON i.id = r.image_id LEFT JOIN images ins ON ins.id = r.inset_image_id
+      `SELECT r.id, r.section, r.caption, i.id AS image_id, i.rel_path, i.sha256, ins.rel_path AS inset, v.id AS version
+       FROM renders r LEFT JOIN render_versions v ON v.id = r.active_version_id
+       JOIN images i ON i.id = coalesce(v.image_id, r.image_id) LEFT JOIN images ins ON ins.id = r.inset_image_id
        WHERE r.project_id = ? ORDER BY r.sort, r.id`
     )
     .all(projectId) as Row[]
@@ -137,7 +139,8 @@ function getRenders(db: DatabaseSync, projectId: number): ProjectRender[] {
     thumbnailUrl: thumbnailUrl(r.sha256 as string),
     insetUrl: r.inset ? mediaUrl(r.inset as string) : null,
     section: r.section as RenderSection,
-    caption: r.caption as string | null
+    caption: r.caption as string | null,
+    edited: r.version !== null
   }))
 }
 

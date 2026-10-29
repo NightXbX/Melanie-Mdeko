@@ -28,6 +28,7 @@ export interface ProjectRender {
   insetUrl: string | null
   section: RenderSection
   caption: string | null
+  edited: boolean // une version retouchée par l'assistant remplace l'original dans le book
 }
 
 export interface ProjectNeed {
