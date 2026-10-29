@@ -1,9 +1,11 @@
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
-import { IPC, type AppInfo } from '@shared/api'
-import { createBackup, ensureDailyBackup, listBackups } from './backup'
+import { app, BrowserWindow, dialog, nativeTheme, shell } from 'electron'
+import { ensureSearchIndex } from './articles'
+import { createBackup, ensureDailyBackup } from './backup'
 import { migrate, openDatabase, pendingMigrations, schemaVersion } from './db/database'
+import { registerIpc } from './ipc'
+import { handleMedia, registerMediaScheme } from './media'
 import { buildMenu } from './menu'
 import { resolveDataPaths, type DataPaths } from './paths'
 
@@ -16,6 +18,7 @@ let mainWindow: BrowserWindow | null = null
 app.commandLine.appendSwitch('lang', 'fr')
 // Mélanie travaille en mode clair, quel que soit le réglage du Mac.
 nativeTheme.themeSource = 'light'
+registerMediaScheme()
 
 // Une seule instance : deux fenêtres qui écrivent dans la même base, c'est le risque de conflit.
 if (!app.requestSingleInstanceLock()) {
@@ -46,7 +49,11 @@ function start(): void {
     applicationVersion: app.getVersion(),
     copyright: 'm·deko'
   })
-  registerIpc()
+  handleMedia(paths.root, (sha) => {
+    const row = db.prepare('SELECT rel_path FROM images WHERE sha256 = ?').get(sha) as { rel_path: string } | undefined
+    return row?.rel_path ?? null
+  })
+  registerIpc(db, paths, backupNow)
   buildMenu({
     backupNow: () => backupNow(),
     openDataFolder: () => void shell.openPath(paths.root)
@@ -66,6 +73,7 @@ function openData(): void {
     createBackup(db, paths.backups, 'avant-mise-a-jour')
   }
   migrate(db)
+  ensureSearchIndex(db)
   ensureDailyBackup(db, paths.backups)
   setInterval(() => ensureDailyBackup(db, paths.backups), HOUR)
 }
@@ -74,30 +82,13 @@ function backupNow(): string {
   return createBackup(db, paths.backups, 'manuelle')
 }
 
-function registerIpc(): void {
-  ipcMain.handle(IPC.getAppInfo, (): AppInfo => {
-    const last = listBackups(paths.backups)[0]
-    return {
-      version: app.getVersion(),
-      platform: process.platform,
-      dataDir: paths.root,
-      schemaVersion: schemaVersion(db),
-      lastBackupAt: last ? last.date.toISOString() : null
-    }
-  })
-  ipcMain.handle(IPC.openDataFolder, async () => {
-    await shell.openPath(paths.root)
-  })
-  ipcMain.handle(IPC.backupNow, () => backupNow())
-}
-
 function createWindow(): void {
   const isMac = process.platform === 'darwin'
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    minWidth: 960,
-    minHeight: 620,
+    width: 1360,
+    height: 860,
+    minWidth: 1024,
+    minHeight: 640,
     show: false,
     title: app.name,
     ...(isMac

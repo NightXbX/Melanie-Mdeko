@@ -24,7 +24,9 @@ Mac cible : **Mac fixe M1, 16 Go, macOS Tahoe 26.x** (26.2.2 déclaré ; un expo
 ## Commandes et organisation du code
 
 - `npm run dev` : appli en développement (données dans `./donnees`, ignoré par git) ; `npm test` ; `npm run typecheck` ; `npm run build`.
-- `src/main/` : processus principal (fenêtre, menus, base, sauvegardes, IPC). `src/main/db/migrations/NNN_nom.sql` est chargé automatiquement : ne jamais modifier une migration livrée, en ajouter une.
+- `src/main/` : processus principal (fenêtre, menus, base, sauvegardes, IPC). Migrations : créer `src/main/db/migrations/NNN_nom.sql` **et l'importer dans `migrations/index.ts`** (liste explicite : `import.meta.glob` restait figé dans le cache de Vitest). Ne jamais modifier une migration livrée.
+- Recherche : table FTS5 `articles_fts` (nom, fournisseur, catégorie, détails), reconstruite au démarrage si elle ne correspond plus aux articles ; `reindexArticle()` après chaque modification. Fonction SQL `sans_accents()` déclarée à l'ouverture, pour trier comme un dictionnaire.
+- Images : protocole interne `mdeko://media/<chemin>` et `mdeko://miniature/<sha256>` (miniatures JPEG 360 px dans `images/miniatures/`, créées par la migration ; repli sur l'image complète).
 - `src/preload/` : pont sécurisé (`window.mdeko`). `src/shared/api.ts` : contrat IPC commun. `src/renderer/` : interface React.
 - Fenêtre en `sandbox` + `contextIsolation`, aucun accès Node dans l'interface. Les liens web s'ouvrent dans le navigateur.
 - CI : `.github/workflows/build-mac.yml` (runner `macos-latest`) : typecheck, tests, build `.dmg` + `.zip` arm64, signature ad hoc vérifiée par `codesign`. Un tag `vX.Y.Z` crée une Release GitHub (source des mises à jour).

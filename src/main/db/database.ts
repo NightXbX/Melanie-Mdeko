@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
+import { SOURCES } from './migrations'
 
 export interface Migration {
   version: number
@@ -6,20 +7,12 @@ export interface Migration {
   sql: string
 }
 
-// Chaque fichier migrations/NNN_nom.sql est appliqué une seule fois, dans l'ordre.
-// Ne jamais modifier une migration déjà livrée : en ajouter une nouvelle.
-const files = import.meta.glob<string>('./migrations/*.sql', {
-  query: '?raw',
-  import: 'default',
-  eager: true
-})
-
-export const MIGRATIONS: Migration[] = Object.entries(files)
-  .map(([path, sql]) => {
-    const name = path.split('/').pop()!.replace(/\.sql$/, '')
+// Chaque migration est appliquée une seule fois, dans l'ordre (voir migrations/index.ts).
+export const MIGRATIONS: Migration[] = Object.entries(SOURCES)
+  .map(([name, sql]) => {
     const version = Number.parseInt(name, 10)
     if (!Number.isInteger(version) || version <= 0) {
-      throw new Error(`Migration mal nommée : ${path}`)
+      throw new Error(`Migration mal nommée : ${name}`)
     }
     return { version, name, sql }
   })
@@ -28,6 +21,10 @@ export const MIGRATIONS: Migration[] = Object.entries(files)
 export function openDatabase(file: string): DatabaseSync {
   const db = new DatabaseSync(file)
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;')
+  // Tri « dictionnaire » : Étagère avec les E, pas après les Z.
+  db.function('sans_accents', { deterministic: true }, (texte) =>
+    typeof texte === 'string' ? texte.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase() : texte
+  )
   return db
 }
 

@@ -35,6 +35,7 @@ MIGRATIONS = RACINE_DEPOT / "src" / "main" / "db" / "migrations"
 LARGEUR_COLONNE, LARGEUR_MIN, LARGEUR_MAX = 136, 110, 160
 TAILLE_TITRE_SECTION = 40
 DPI_INSPIRATIONS = 150
+TAILLE_MINIATURE = 360
 
 
 @dataclass
@@ -257,6 +258,16 @@ class Images:
         self.par_xref[xref] = res
         return res
 
+    def miniature(self, im: Image.Image, sha: str) -> None:
+        """Miniature JPEG sur fond blanc pour la grille de l'appli (même règle que src/main/media.ts)."""
+        chemin = self.racine / "images" / "miniatures" / sha[:2] / f"{sha}.jpg"
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        petit = im.convert("RGBA")
+        petit.thumbnail((TAILLE_MINIATURE, TAILLE_MINIATURE), Image.Resampling.LANCZOS)
+        fond = Image.new("RGB", petit.size, "white")
+        fond.paste(petit, mask=petit.split()[3])
+        fond.save(chemin, "JPEG", quality=80)
+
     def couleur_moyenne(self, xref: int) -> str | None:
         res = self.extraire(xref)
         if not res:
@@ -276,6 +287,8 @@ class Images:
         with Image.open(io.BytesIO(donnees)) as im:
             largeur, hauteur = im.size
             dhash = empreinte(im)
+            if dossier == "articles":
+                self.miniature(im, sha)
         res = {"rel": rel, "sha": sha, "w": largeur, "h": hauteur, "dhash": dhash}
         self.par_sha[sha] = res
         return res
