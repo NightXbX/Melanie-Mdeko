@@ -185,7 +185,10 @@ html:not([data-platform='darwin']) .sidebar-titlebar {
   gap: 10px;
 }
 
-.toolbar-items > * {
+/* Sur Mac, la barre déplace la fenêtre et avale les clics : tout ce qui se clique doit en être exclu
+   (y compris le bouton « Projets » posé directement dans la barre). */
+.toolbar-items > *,
+.toolbar :is(button, a, input, select, textarea, [role='button']) {
   -webkit-app-region: no-drag;
 }
 
