@@ -80,3 +80,13 @@ export function macSwapScript(pid: number, appPath: string, newAppPath: string):
     ''
   ].join('\n')
 }
+
+// Message compréhensible pour une erreur de téléchargement (Chromium et Node écrivent « net::ERR_… » ou « fetch failed »).
+export function downloadErrorText(error: unknown): string {
+  const message = error instanceof Error ? `${error.message} ${String((error as { cause?: unknown }).cause ?? '')}` : String(error)
+  if (/abîmée/.test(message)) return 'La mise à jour téléchargée est abîmée : réessayez.'
+  if (/SSL|TLS|CERT|certificate/i.test(message)) {
+    return 'La connexion sécurisée avec GitHub n’a pas pu s’établir. Un antivirus, un VPN ou le contrôle parental de la box bloque peut-être le téléchargement : réessayez plus tard ou sur un autre réseau.'
+  }
+  return 'Le téléchargement de la mise à jour a échoué (pas de connexion ?). Réessayez dans un moment.'
+}

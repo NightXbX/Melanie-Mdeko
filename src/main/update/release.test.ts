@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { availableUpdate, isNewer, macSwapScript } from './release'
+import { availableUpdate, downloadErrorText, isNewer, macSwapScript } from './release'
 
 const DL = 'https://github.com/NightXbX/Melanie-Mdeko/releases/download/v0.1.12'
 const release = {
@@ -40,5 +40,14 @@ describe('mises à jour', () => {
     expect(script).toContain('while kill -0 42')
     expect(script).toContain("mv '/Applications/Mdeko.app' '/Applications/Mdeko.app.ancienne'")
     expect(script).toContain("open '/Applications/Mdeko.app'")
+  })
+})
+
+describe('erreurs de téléchargement', () => {
+  it('explique une erreur de connexion sécurisée', () => {
+    expect(downloadErrorText(new Error('net::ERR_SSL_PROTOCOL_ERROR'))).toMatch(/connexion sécurisée/)
+    expect(downloadErrorText(Object.assign(new TypeError('fetch failed'), { cause: new Error('certificate has expired') }))).toMatch(/connexion sécurisée/)
+    expect(downloadErrorText(new Error('net::ERR_INTERNET_DISCONNECTED'))).toMatch(/pas de connexion/)
+    expect(downloadErrorText(new Error('La mise à jour téléchargée est abîmée : réessayez.'))).toMatch(/abîmée/)
   })
 })

@@ -8,7 +8,7 @@ import { app, BrowserWindow, ipcMain, net } from 'electron'
 import { IPC, type UpdateInfo } from '@shared/api'
 import { createBackup } from '../backup'
 import type { DataPaths } from '../paths'
-import { availableUpdate, LATEST_RELEASE, macSwapScript, type Release } from './release'
+import { availableUpdate, downloadErrorText, LATEST_RELEASE, macSwapScript, type Release } from './release'
 
 const HOUR = 60 * 60 * 1000
 const run = promisify(execFile)
@@ -92,10 +92,28 @@ export function registerUpdates(db: DatabaseSync, paths: DataPaths): void {
   })
 }
 
-// Téléchargement avec progression, puis contrôle de la taille et de l'empreinte annoncées par GitHub.
+// Le fichier est servi par un autre domaine de GitHub (release-assets.githubusercontent.com).
+// Si la pile réseau de Chromium échoue (ERR_SSL_PROTOCOL_ERROR derrière un antivirus, un proxy ou un
+// filtre de la box), on réessaie avec celle de Node, qui ne passe pas par les mêmes réglages.
+// L'empreinte SHA-256 est vérifiée dans tous les cas.
 async function download(release: Release, file: string, onProgress: (done: number) => void): Promise<void> {
-  const res = await net.fetch(release.asset.url, { headers: { 'User-Agent': 'Mdeko' } })
-  if (!res.ok || !res.body) throw new Error('Le téléchargement de la mise à jour a échoué.')
+  const headers = { 'User-Agent': 'Mdeko' }
+  const fetchers = [() => net.fetch(release.asset.url, { headers }), () => fetch(release.asset.url, { headers }), () => net.fetch(release.asset.url, { headers })]
+  let lastError: unknown = null
+  for (const get of fetchers) {
+    try {
+      return await downloadOnce(release, file, get, onProgress)
+    } catch (error) {
+      lastError = error
+      onProgress(0)
+    }
+  }
+  throw new Error(downloadErrorText(lastError))
+}
+
+async function downloadOnce(release: Release, file: string, get: () => Promise<Response>, onProgress: (done: number) => void): Promise<void> {
+  const res = await get()
+  if (!res.ok || !res.body) throw new Error(`Réponse ${res.status} de GitHub`)
   const hash = createHash('sha256')
   const out = createWriteStream(file)
   const reader = res.body.getReader()
