@@ -62,12 +62,14 @@ export function updateProject(db: DatabaseSync, id: number, patch: ProjectPatch)
   if (patch.phone !== undefined) columns.push(['phone', patch.phone || null])
   if (patch.email !== undefined) columns.push(['email', patch.email || null])
   if (patch.bookDate !== undefined) columns.push(['book_date', patch.bookDate])
+  if (patch.showPrices !== undefined) columns.push(['show_prices', patch.showPrices ? 1 : 0])
+  if (patch.groupSingleChoices !== undefined) columns.push(['group_single_choices', patch.groupSingleChoices ? 1 : 0])
   if (patch.texts) {
     columns.push(['intro_text', patch.texts.intro], ['wishes_text', patch.texts.wishes], ['closing_text', patch.texts.closing])
   }
   if (!columns.length) return
   db.prepare(`UPDATE projects SET ${columns.map(([c]) => `${c} = ?`).join(', ')}, updated_at = ? WHERE id = ?`).run(
-    ...(columns.map(([, v]) => v) as (string | null)[]),
+    ...(columns.map(([, v]) => v) as (string | number | null)[]),
     now(),
     id
   )
@@ -102,7 +104,14 @@ export function getProject(db: DatabaseSync, id: number): Project | null {
     renders: getRenders(db, id),
     needs: getNeeds(db, id),
     paintIds: ids('SELECT paint_id AS id FROM project_paints WHERE project_id = ? ORDER BY sort'),
-    artisanIds: ids('SELECT artisan_id AS id FROM project_artisans WHERE project_id = ? ORDER BY sort')
+    artisanIds: ids('SELECT artisan_id AS id FROM project_artisans WHERE project_id = ? ORDER BY sort'),
+    showPrices: p.show_prices !== 0,
+    groupSingleChoices: p.group_single_choices === 1,
+    trendImages: (
+      db
+        .prepare('SELECT i.id, i.rel_path FROM project_trend_images t JOIN images i ON i.id = t.image_id WHERE t.project_id = ? ORDER BY t.sort')
+        .all(id) as { id: number; rel_path: string }[]
+    ).map((i) => ({ id: i.id, url: mediaUrl(i.rel_path) }))
   }
 }
 
@@ -189,7 +198,7 @@ function cards(db: DatabaseSync, needId: number, role: 'choice' | 'alternative')
 function getNeeds(db: DatabaseSync, projectId: number): ProjectNeed[] {
   const rows = db
     .prepare(
-      `SELECT n.id, n.room_id, n.label, c.name AS category FROM needs n LEFT JOIN categories c ON c.id = n.category_id
+      `SELECT n.id, n.room_id, n.label, n.quantity, c.name AS category FROM needs n LEFT JOIN categories c ON c.id = n.category_id
        WHERE n.project_id = ? ORDER BY n.sort, n.id`
     )
     .all(projectId) as Row[]
@@ -212,6 +221,7 @@ function getNeeds(db: DatabaseSync, projectId: number): ProjectNeed[] {
       category: r.category as string | null,
       choice,
       alternatives: cards(db, r.id as number, 'alternative'),
+      quantity: r.quantity as number,
       choiceImages,
       bookImageIds
     }
@@ -301,8 +311,34 @@ export function setNeedRoom(db: DatabaseSync, needId: number, roomId: number | n
   db.prepare('UPDATE needs SET room_id = ? WHERE id = ?').run(roomId, needId)
 }
 
+export function setNeedQuantity(db: DatabaseSync, needId: number, quantity: number): void {
+  db.prepare('UPDATE needs SET quantity = ? WHERE id = ?').run(Math.max(1, Math.min(999, Math.round(quantity) || 1)), needId)
+}
+
 export function removeNeed(db: DatabaseSync, needId: number): void {
   db.prepare('DELETE FROM needs WHERE id = ?').run(needId)
+}
+
+// --- Planche tendance -----------------------------------------------------------------------------
+
+export function setTrendImages(db: DatabaseSync, projectId: number, imageIds: number[]): void {
+  db.prepare('DELETE FROM project_trend_images WHERE project_id = ?').run(projectId)
+  imageIds.forEach((id, sort) =>
+    db.prepare('INSERT OR IGNORE INTO project_trend_images (project_id, image_id, sort) VALUES (?, ?, ?)').run(projectId, id, sort)
+  )
+  touch(db, projectId)
+}
+
+// Photos des inspirations (planches d'ambiance de l'ancienne shopping list), pour composer une planche tendance.
+export function listInspirationImages(db: DatabaseSync): { id: number; url: string; title: string }[] {
+  return (
+    db
+      .prepare(
+        `SELECT i.id, i.sha256, i.rel_path, n.title FROM inspirations n JOIN inspiration_images ii ON ii.inspiration_id = n.id
+         JOIN images i ON i.id = ii.image_id WHERE n.deleted_at IS NULL ORDER BY sans_accents(n.title), n.id, ii.sort`
+      )
+      .all() as { id: number; sha256: string | null; rel_path: string; title: string }[]
+  ).map((r) => ({ id: r.id, url: r.sha256 ? thumbnailUrl(r.sha256) : mediaUrl(r.rel_path), title: r.title }))
 }
 
 // --- Teintes, artisans ------------------------------------------------------------------------------

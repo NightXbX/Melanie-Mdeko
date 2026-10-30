@@ -3,6 +3,7 @@ import { AppProvider } from './app-context'
 import { ImportSheet } from './components/ImportSheet'
 import { SettingsSheet } from './components/SettingsSheet'
 import { Sidebar, type View } from './components/Sidebar'
+import { ArtisansView } from './views/ArtisansView'
 import { CheckView } from './views/CheckView'
 import { ProjectsView } from './views/ProjectsView'
 import { ShoppingListView } from './views/ShoppingListView'
@@ -38,12 +39,13 @@ export function App() {
   return (
     <AppProvider>
       <div className="app">
-        <Sidebar current={view} onSelect={setView} />
+        <Sidebar current={view} onSelect={setView} onSettings={() => setSettingsOpen(true)} />
         <main className="content">
           {view === 'shopping' && <ShoppingListView newArticleSignal={newArticleSignal} />}
           {view === 'projects' && (
             <ProjectsView newProjectSignal={newProjectSignal} openRequest={openProject} onImport={(path) => setImporting({ path })} />
           )}
+          {view === 'artisans' && <ArtisansView />}
           {view === 'check' && <CheckView />}
           {view === 'trash' && <TrashView />}
         </main>

@@ -48,7 +48,12 @@ Mac cible : **Mac fixe M1, 16 Go, macOS Tahoe 26.x** (26.2.2 déclaré ; un expo
 - Dans le projet : « Créer un nouvel article » (même fiche que la shopping list, `ArticleEditorSheet`) et « Modifier l'article » sur chaque article.
 - **Glisser-déposer partout** (`lib/sortable.ts`) : besoins (y compris d'une pièce à l'autre), propositions (lâchée sur « Mon choix » = devient le choix), pièces, teintes et artisans du projet, photos d'un article, rendus.
 - Alternatives automatiques : même sous-catégorie, prix le plus proche, avec photo de préférence, sans doublon de lien.
-- Réglages (⌘,) : coordonnées, QR code d'avis, textes modèles (`{pieces}` = pièces du projet).
+- Réglages (⌘, ou bouton en bas de la barre latérale) : coordonnées, QR code d'avis, textes modèles (`{pieces}` = pièces du projet).
+- **Quantités** (`needs.quantity`) : « 2 × 219 € » sous « Mon choix », colonne « Qté » et total multiplié dans le récapitulatif.
+- **Options du book par projet** (étape Shopping list) : afficher les prix (`projects.show_prices`) ; réunir par 4 sur une page « Mes choix » les choix d'une pièce sans autre proposition (`projects.group_single_choices`).
+- **Planche tendance** (`project_trend_images`) : photos glissées ou prises dans les inspirations ; pages en mosaïque (6 par page) juste après le sommaire, absentes sans photo.
+- Nuancier : sous chaque teinte, la marque (où la trouver) et la référence, plus de code couleur.
+- Écran **Artisans** (barre latérale) : le carnet commun à tous les projets.
 
 ## Vérification de la base (implémentée)
 
@@ -61,6 +66,7 @@ Mac cible : **Mac fixe M1, 16 Go, macOS Tahoe 26.x** (26.2.2 déclaré ; un expo
 ## Import dans l'appli (implémenté)
 
 - Projets › « Importer… », dépôt d'un PDF sur la liste, ou Fichier › Importer (⌘I) : un design book devient un projet (client, date, pièces, rendus, besoins par sous-catégorie, teintes, artisans) et ses nouveaux articles rejoignent la shopping list ; une shopping list seule ajoute ses articles.
+- **Book exporté par Mdeko** (titre PDF `mdeko-book-…`) : lu par `read-mdeko.ts` d'après les positions de `layout.ts` (sommaire, besoins avec propositions et quantités, rendus, teintes, artisans, textes, planche tendance), pour reprendre un projet sur un autre ordinateur. **Toute modification de `layout.ts` doit garder cette lecture** (test : copier un book exporté sous `ressources/design-book-mdeko-test.pdf`).
 - `src/main/import/` : `read-pdf.ts` (lecture par mupdf, en WASM, sans module natif), `rules.ts` (classement, mêmes listes que `tools/migration` via `src/shared/import-rules.json`), `apply.ts` (doublons : URL nettoyée, ou même nom et photo proche), `index.ts` (une seule transaction : en cas d'erreur, rien n'est modifié).
 - **Besoins** : un article surligné au fluo est « Mon choix », les autres articles de sa page sont ses propositions ; une page sans fluo prolonge le choix du même genre déjà fait dans la pièce, sinon chacun de ses articles est un choix. Book sans aucun fluo (ancien format) : un besoin par sous-catégorie, premier article = « Mon choix ».
 - **Pièces** : un intercalaire de pièce (« ENTRÉE », « CHAMBRE PARENTALE »…, `isRoomSection`) range les besoins qui suivent dans cette pièce. Sous une pièce, la catégorie d'un nouvel article se devine d'après les noms des articles existants ; un article réutilisé qui n'est qu'en « Divers » est reclassé.

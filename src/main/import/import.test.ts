@@ -41,3 +41,22 @@ describe.skipIf(!existsSync(BOOK))('import d’un design book PDF', () => {
     expect(again.reused).toBe(summary.added + summary.reused)
   })
 })
+
+// Book exporté par Mdeko (pour reprendre un projet sur un autre ordinateur) : à copier sous ce nom dans ressources/.
+const MDEKO_BOOK = resolve(__dirname, '../../../ressources/design-book-mdeko-test.pdf')
+
+describe.skipIf(!existsSync(MDEKO_BOOK))('import d’un design book exporté par Mdeko', () => {
+  it('retrouve le projet tel qu’il était', { timeout: 120_000 }, async () => {
+    const db = openDatabase(':memory:')
+    migrate(db)
+    ensureSearchIndex(db)
+    const summary = await importPdf(db, root, new Uint8Array(readFileSync(MDEKO_BOOK)))
+    const project = getProject(db, summary.projectId!)!
+    expect(project.renders.length).toBeGreaterThan(0)
+    expect(project.needs.length).toBeGreaterThan(0)
+    expect(project.needs.every((n) => n.choice !== null)).toBe(true)
+    expect(project.needs.some((n) => n.alternatives.length > 0)).toBe(true)
+    // Les pièces sont celles du haut des pages, sans l'étiquette « Autres propositions ».
+    expect(project.rooms.every((r) => !/proposition/i.test(r.name))).toBe(true)
+  })
+})

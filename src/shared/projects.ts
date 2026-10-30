@@ -38,6 +38,7 @@ export interface ProjectNeed {
   category: string | null
   choice: ArticleCard | null
   alternatives: ArticleCard[]
+  quantity: number // nombre d'exemplaires de « Mon choix » à acheter
   // Photos de « Mon choix » : toutes celles de l'article, et celles retenues pour le book (vide = la première).
   choiceImages: { id: number; url: string }[]
   bookImageIds: number[]
@@ -81,10 +82,13 @@ export interface Project {
   needs: ProjectNeed[]
   paintIds: number[]
   artisanIds: number[]
+  showPrices: boolean // prix affichés dans le design book
+  groupSingleChoices: boolean // choix sans autre proposition regroupés sur une même page
+  trendImages: { id: number; url: string }[] // planche tendance (aucune photo : pas de planche)
 }
 
 export type ProjectPatch = Partial<
-  Pick<Project, 'clientTitle' | 'clientName' | 'address' | 'phone' | 'email' | 'bookDate'> & { texts: ProjectTexts }
+  Pick<Project, 'clientTitle' | 'clientName' | 'address' | 'phone' | 'email' | 'bookDate' | 'showPrices' | 'groupSingleChoices'> & { texts: ProjectTexts }
 >
 
 // Réglages de Mélanie : coordonnées et textes modèles (dans ses données, jamais dans le code).

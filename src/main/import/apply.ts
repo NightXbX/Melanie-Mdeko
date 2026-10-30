@@ -20,6 +20,7 @@ interface Placed {
 interface NeedDraft {
   room: number | null
   label: string | null
+  quantity?: number
   choice: Placed
   alternatives: Placed[]
   fromHighlight: boolean
@@ -42,6 +43,8 @@ export class BookImporter {
   private projectId: number | null = null
   private projectTitle: string | null = null
   private pages: { room: number | null; rows: Placed[] }[] = []
+  private formed: NeedDraft[] = [] // besoins d'un book exporté par Mdeko, tels quels
+  private trendCount = 0
   private rooms: { key: string; id: number; claimed: boolean }[] = []
   private known: { words: string[]; category: number }[] | null = null
   private needCount = 0
@@ -123,11 +126,12 @@ export class BookImporter {
     if (photo) {
       const candidates = this.db
         .prepare(
-          `SELECT a.id, a.name, i.phash FROM articles a JOIN article_images ai ON ai.article_id = a.id AND ai.sort = 0
+          `SELECT a.id, a.name, a.url_clean, i.phash FROM articles a JOIN article_images ai ON ai.article_id = a.id AND ai.sort = 0
            JOIN images i ON i.id = ai.image_id WHERE a.deleted_at IS NULL AND i.phash IS NOT NULL`
         )
-        .all() as { id: number; name: string; phash: string }[]
-      const same = candidates.find((c) => cle(c.name) === cle(row.name) && hamming(c.phash, photo.dhash) <= 10)
+        .all() as { id: number; name: string; url_clean: string | null; phash: string }[]
+      // Même nom et photo proche, mais deux liens différents : deux variantes du produit, gardées toutes les deux.
+      const same = candidates.find((c) => cle(c.name) === cle(row.name) && hamming(c.phash, photo.dhash) <= 10 && !(link && c.url_clean))
       if (same) {
         this.reused++
         return same.id
@@ -190,8 +194,9 @@ export class BookImporter {
 
   // Pièce d'un intercalaire (« CHAMBRE PARENTALE »…). Une pièce citée dans « Vos envies » (« chambre ») prend le
   // nom complet du premier intercalaire qui lui correspond ; une deuxième chambre devient une autre pièce.
-  private room(section: string): number | null {
-    if (!isRoomSection(section)) return null
+  // Dans un book exporté par Mdeko, la pièce est écrite en haut de page : c'en est forcément une.
+  private room(section: string, sure = false): number | null {
+    if (!sure && !isRoomSection(section)) return null
     const key = cle(section)
     const same = this.rooms.find((r) => r.key === key)
     if (same) return same.id
@@ -225,9 +230,44 @@ export class BookImporter {
       case 'render':
         if (this.projectId === null) return
         this.db
-          .prepare('INSERT INTO renders (project_id, image_id, inset_image_id, section, sort) VALUES (?, ?, ?, ?, ?)')
-          .run(this.projectId, this.image(e.image), e.inset ? this.image(e.inset) : null, e.section, this.renderCount++)
+          .prepare('INSERT INTO renders (project_id, image_id, inset_image_id, section, caption, sort) VALUES (?, ?, ?, ?, ?, ?)')
+          .run(this.projectId, this.image(e.image), e.inset ? this.image(e.inset) : null, e.section, e.caption ?? null, this.renderCount++)
         return
+      case 'need': {
+        if (this.projectId === null) return
+        const place = (row: RowDraft): Placed => {
+          const article = this.article(row)
+          return { article, category: this.reclassify(article, row.name), highlighted: false, label: e.label }
+        }
+        const choice = place(e.choice)
+        // Titre du besoin : gardé seulement s'il diffère du nom de la sous-catégorie.
+        const sub = choice.category === null ? null : one<{ name: string }>(this.db, 'SELECT name FROM categories WHERE id = ?', choice.category)?.name
+        this.formed.push({
+          room: e.room ? this.room(e.room, true) : null,
+          label: sub && cle(sub) === cle(e.label) ? null : e.label,
+          quantity: e.quantity,
+          choice,
+          alternatives: e.alternatives.map(place),
+          fromHighlight: false
+        })
+        return
+      }
+      case 'trend':
+        if (this.projectId === null) return
+        this.db
+          .prepare('INSERT OR IGNORE INTO project_trend_images (project_id, image_id, sort) VALUES (?, ?, ?)')
+          .run(this.projectId, this.image(e.image), this.trendCount++)
+        return
+      case 'texts': {
+        if (this.projectId === null) return
+        // Un texte identique au modèle des réglages reste « modèle » (il suivra ses changements).
+        const template = (key: string) => one<{ value: string | null }>(this.db, 'SELECT value FROM settings WHERE key = ?', key)?.value ?? ''
+        if (e.intro && cle(e.intro) !== cle(template('text_intro'))) this.db.prepare('UPDATE projects SET intro_text = ? WHERE id = ?').run(e.intro, this.projectId)
+        if (e.closing && cle(e.closing) !== cle(template('text_closing'))) {
+          this.db.prepare('UPDATE projects SET closing_text = ? WHERE id = ?').run(e.closing, this.projectId)
+        }
+        return
+      }
       case 'wishes': {
         if (this.projectId === null || !e.text) return
         this.db.prepare('UPDATE projects SET wishes_text = ? WHERE id = ?').run(e.text, this.projectId)
@@ -307,12 +347,12 @@ export class BookImporter {
     const pid = this.projectId
     if (pid !== null) {
       const highlighted = this.pages.some((p) => p.rows.some((r) => r.highlighted))
-      const needs = highlighted ? this.highlightedNeeds() : this.groupedNeeds()
+      const needs = this.formed.length ? this.formed : highlighted ? this.highlightedNeeds() : this.groupedNeeds()
       needs.forEach((n, sort) => {
         const needId = Number(
           this.db
-            .prepare('INSERT INTO needs (project_id, room_id, category_id, label, sort) VALUES (?, ?, ?, ?, ?)')
-            .run(pid, n.room, n.choice.category, n.label, sort).lastInsertRowid
+            .prepare('INSERT INTO needs (project_id, room_id, category_id, label, quantity, sort) VALUES (?, ?, ?, ?, ?, ?)')
+            .run(pid, n.room, n.choice.category, n.label, n.quantity ?? 1, sort).lastInsertRowid
         )
         this.db.prepare("INSERT INTO need_articles (need_id, article_id, role) VALUES (?, ?, 'choice')").run(needId, n.choice.article)
         const alternatives = [...new Set(n.alternatives.map((a) => a.article))].filter((id) => id !== n.choice.article)

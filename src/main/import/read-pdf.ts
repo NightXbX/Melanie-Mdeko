@@ -2,9 +2,10 @@
 // tools/migration/extraire_shopping_list.py, avec MuPDF en WebAssembly).
 import type * as Mupdf from 'mupdf'
 import { DEFAULT_PAINT_BRAND } from '@shared/projects'
+import { isMdekoBook, readMdekoBook } from './read-mdeko'
 import { category, cle, paintName } from './rules'
 
-type MupdfModule = typeof Mupdf
+export type MupdfModule = typeof Mupdf
 
 export interface EncodedImage {
   bytes: Uint8Array // JPEG sur fond blanc
@@ -34,12 +35,16 @@ export type ImportEvent =
   | { kind: 'start'; pages: number; cover: Cover | null }
   | { kind: 'progress'; page: number }
   | { kind: 'rows'; rows: RowDraft[] }
-  | { kind: 'render'; image: EncodedImage; inset: EncodedImage | null; section: 'plans' | 'changes' }
+  | { kind: 'render'; image: EncodedImage; inset: EncodedImage | null; section: 'plans' | 'changes'; caption?: string }
   | { kind: 'wishes'; text: string }
+  // Books exportés par Mdeko : besoins déjà formés, planche tendance, textes du projet.
+  | { kind: 'need'; room: string | null; label: string; quantity: number; choice: RowDraft; alternatives: RowDraft[] }
+  | { kind: 'trend'; image: EncodedImage }
+  | { kind: 'texts'; intro?: string; closing?: string }
   | { kind: 'paints'; paints: { brand: string; name: string; reference: string | null; hex: string | null; promoCode: string | null }[] }
   | { kind: 'artisans'; artisans: { trade: string; name: string; city: string | null; phone: string | null }[] }
 
-interface Line {
+export interface Line {
   text: string
   size: number
   x0: number
@@ -48,10 +53,11 @@ interface Line {
   y1: number
 }
 
-interface PageData {
+export interface PageData {
   lines: Line[]
   images: { image: Mupdf.Image; x0: number; y0: number; x1: number; y1: number }[]
-  links: { uri: string; y: number }[]
+  links: { uri: string; x: number; y: number }[]
+  fills: { x0: number; y0: number; x1: number; y1: number; hex: string }[] // formes pleines en couleur
   hCoverage: Map<number, number> // y arrondi -> longueur horizontale tracée
   verticals: number[] // x des traits verticaux et bords de rectangles hauts
   discs: { x0: number; y0: number; x1: number; y1: number; hex: string }[]
@@ -73,8 +79,8 @@ function isFluo(cs: Mupdf.ColorSpace | null, color: number[]): boolean {
 
 // --- Lecture brute d'une page --------------------------------------------------------------------
 
-function readPage(mupdf: MupdfModule, page: Mupdf.PDFPage | Mupdf.Page): PageData {
-  const data: PageData = { lines: [], images: [], links: [], hCoverage: new Map(), verticals: [], discs: [], highlights: [] }
+export function readPage(mupdf: MupdfModule, page: Mupdf.PDFPage | Mupdf.Page): PageData {
+  const data: PageData = { lines: [], images: [], links: [], fills: [], hCoverage: new Map(), verticals: [], discs: [], highlights: [] }
   const st = JSON.parse(page.toStructuredText('preserve-whitespace').asJSON()) as {
     blocks: { type: string; lines?: { text: string; font: { size: number }; bbox: { x: number; y: number; w: number; h: number } }[] }[]
   }
@@ -87,8 +93,8 @@ function readPage(mupdf: MupdfModule, page: Mupdf.PDFPage | Mupdf.Page): PageDat
   }
   for (const link of page.getLinks()) {
     const uri = link.getURI()
-    const [, y0, , y1] = link.getBounds()
-    if (/^https?:/i.test(uri)) data.links.push({ uri, y: (y0 + y1) / 2 })
+    const [x0, y0, , y1] = link.getBounds()
+    if (/^https?:/i.test(uri)) data.links.push({ uri, x: x0, y: (y0 + y1) / 2 })
   }
 
   const addH = (y: number, length: number) => data.hCoverage.set(Math.round(y), (data.hCoverage.get(Math.round(y)) ?? 0) + length)
@@ -125,6 +131,7 @@ function readPage(mupdf: MupdfModule, page: Mupdf.PDFPage | Mupdf.Page): PageDat
     const w = box.x1 - box.x0
     const h = box.y1 - box.y0
     if (highlight) data.highlights.push({ y0: box.y0, y1: box.y1 })
+    if (fill) data.fills.push({ ...box, hex: '#' + fill.slice(0, 3).map((c) => Math.round(c * 255).toString(16).padStart(2, '0').toUpperCase()).join('') })
     if (fill && w > 25 && w < 120 && Math.abs(w - h) <= 4) {
       data.discs.push({ ...box, hex: '#' + fill.slice(0, 3).map((c) => Math.round(c * 255).toString(16).padStart(2, '0').toUpperCase()).join('') })
     }
@@ -235,7 +242,7 @@ function readTable(mupdf: MupdfModule, d: PageData, section: string, cols: numbe
 
 // --- Autres pages du book ------------------------------------------------------------------------
 
-function readCover(d: PageData): Cover | null {
+export function readCover(d: PageData): Cover | null {
   const texts = d.lines.map((l) => l.text.split(/\s+/).filter(Boolean).join(' '))
   if (!texts.some((t) => t.toLowerCase() === 'design book')) return null
   let bookDate: string | null = null
@@ -269,7 +276,7 @@ function textLines(d: PageData): { y: number; text: string }[] {
 }
 
 // Paragraphes : un écart vertical nettement plus grand que d'habitude sépare deux paragraphes.
-function paragraphs(d: PageData): string {
+export function paragraphs(d: PageData): string {
   const lines = textLines(d)
   if (!lines.length) return ''
   const gaps = lines.slice(1).map((l, i) => l.y - lines[i].y).sort((a, b) => a - b)
@@ -334,6 +341,10 @@ function readPaints(mupdf: MupdfModule, d: PageData) {
 // Lit le PDF page par page ; rend la main entre deux pages pour garder l'appli réactive.
 export async function* readBook(mupdf: MupdfModule, pdf: Uint8Array): AsyncGenerator<ImportEvent> {
   const doc = mupdf.Document.openDocument(pdf, 'application/pdf')
+  if (isMdekoBook(doc)) {
+    yield* readMdekoBook(mupdf, doc)
+    return
+  }
   const count = doc.countPages()
   const cover = count ? readCover(readPage(mupdf, doc.loadPage(0))) : null
   yield { kind: 'start', pages: count, cover }

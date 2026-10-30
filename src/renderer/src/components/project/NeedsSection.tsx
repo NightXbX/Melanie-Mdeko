@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ArticleCard as Card } from '@shared/api'
 import { formatPrice } from '@shared/format'
 import type { ProjectNeed, Room } from '@shared/projects'
@@ -108,6 +108,24 @@ export function NeedsSection({ project, reload }: SectionProps) {
         </button>
       </SectionHeader>
 
+      <div className="need-options">
+        <label className="filter-check">
+          <input
+            type="checkbox"
+            checked={project.showPrices}
+            onChange={(e) => void run(window.mdeko.projects.update(project.id, { showPrices: e.target.checked }))}
+          />
+          <span>Afficher les prix dans le design book</span>
+        </label>
+        <label className="filter-check">
+          <input
+            type="checkbox"
+            checked={project.groupSingleChoices}
+            onChange={(e) => void run(window.mdeko.projects.update(project.id, { groupSingleChoices: e.target.checked }))}
+          />
+          <span>Réunir sur une même page les choix d’une pièce qui n’ont pas d’autre proposition</span>
+        </label>
+      </div>
       {!rooms.length && <p className="section-note">Pour ranger les articles par pièce, ajoutez les pièces dans « Vos envies ».</p>}
       {project.needs.length > 1 && <p className="section-note">Faites glisser un article pour le déplacer, d’une pièce à l’autre si besoin.</p>}
 
@@ -202,6 +220,7 @@ function NeedCard({ need, rooms, drag, run, onPick, onEdit }: NeedCardProps) {
         </span>
         <h3>{need.label ?? need.category ?? 'Article'}</h3>
         <div className="need-actions">
+          <Quantity need={need} run={run} />
           {rooms.length > 0 && (
             <select
               className="need-room-select"
@@ -268,6 +287,33 @@ function NeedCard({ need, rooms, drag, run, onPick, onEdit }: NeedCardProps) {
         </div>
       </div>
     </div>
+  )
+}
+
+// Nombre d'exemplaires de « Mon choix » à acheter (compté dans le récapitulatif du book).
+function Quantity({ need, run }: { need: ProjectNeed; run(action: Promise<unknown>): Promise<void> }) {
+  const [value, setValue] = useState(String(need.quantity))
+  useEffect(() => setValue(String(need.quantity)), [need.quantity])
+  const save = () => {
+    const n = Math.max(1, Math.min(999, Math.round(Number(value)) || 1))
+    setValue(String(n))
+    if (n !== need.quantity) void run(window.mdeko.projects.setNeedQuantity(need.id, n))
+  }
+  return (
+    <label className="need-quantity">
+      Quantité
+      <input
+        type="number"
+        min={1}
+        max={999}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => e.key === 'Enter' && save()}
+        draggable={false}
+        onDragStart={(e) => e.preventDefault()}
+      />
+    </label>
   )
 }
 

@@ -17,6 +17,15 @@ export interface BookArticle {
   images: ImageRef[] // photos montrées dans le book (« Mon choix » peut en avoir plusieurs)
 }
 
+export interface BookNeed {
+  id: number
+  title: string
+  room: { id: number; name: string } | null
+  quantity: number
+  choice: BookArticle | null
+  alternatives: BookArticle[]
+}
+
 export interface BookNote {
   id: number
   pageKey: string
@@ -39,8 +48,12 @@ export interface BookData {
   closing: string
   renders: { id: number; image: ImageRef; inset: ImageRef | null; section: 'plans' | 'changes'; caption: string | null }[]
   // Rangés par pièce (articles sans pièce en tête), dans l'ordre des pièces du projet.
-  needs: { id: number; title: string; room: { id: number; name: string } | null; choice: BookArticle | null; alternatives: BookArticle[] }[]
-  paints: { brand: string; promoCode: string | null; items: { name: string; reference: string | null; hex: string | null }[] }[]
+  needs: BookNeed[]
+  showPrices: boolean
+  groupSingleChoices: boolean // choix sans autre proposition d'une pièce réunis sur une même page
+  trend: { id: number; image: ImageRef }[] // planche tendance
+  // brand : marque ou magasin où trouver la teinte (vide pour « Teintes et couleurs »).
+  paints: { brand: string; promoCode: string | null; items: { name: string; reference: string | null; hex: string | null; brand: string | null }[] }[]
   artisans: { trade: string; name: string; city: string | null; phone: string | null }[]
   notes: BookNote[]
   // Ajustements faits dans l'aperçu, par « <page>|<élément> ».
@@ -227,9 +240,16 @@ export function photoGrid(box: Box, count: number, gap = 3): Box[] {
 
 const FIRST_ALTERNATIVES = 3
 const ALTERNATIVES_PER_PAGE = 8
+const CHOICES_PER_PAGE = 4
+
+// Prix montré sous un article : « 2 × 219 € » s'il en faut plusieurs ; la quantité seule si les prix sont masqués.
+function priceLabel(a: BookArticle, prices: boolean, quantity = 1): string {
+  if (!prices) return quantity > 1 ? `Quantité : ${quantity}` : ''
+  return quantity > 1 ? `${quantity} × ${a.price}` : a.price
+}
 
 // Une page par besoin : « Mon choix » en grand, 3 propositions à côté, les suivantes sur des pages « suite ».
-function needPages(need: BookData['needs'][number]): Page[] {
+function needPages(need: BookNeed, prices: boolean): Page[] {
   const title = (suffix = '') =>
     text({ x: MARGIN, y: 12, w: 200, h: 7 }, need.title.toUpperCase() + suffix, {
       size: 11,
@@ -259,7 +279,7 @@ function needPages(need: BookData['needs'][number]): Page[] {
     el.push(
       label({ x: MARGIN, y: 145, w: 128, h: 5 }, 'Mon choix', 8.5, id('label')),
       text({ x: MARGIN, y: 151, w: 128, h: 13 }, truncate(c.name, 90), { size: 14, weight: 300, lineHeight: 1.25 }, { id: id('name') }),
-      text({ x: MARGIN, y: 165, w: 70, h: 9 }, c.price, { size: 18, weight: 400, valign: 'middle' }, { id: id('price') }),
+      text({ x: MARGIN, y: 165, w: 90, h: 9 }, priceLabel(c, prices, need.quantity), { size: prices ? 18 : 12, weight: prices ? 400 : 300, valign: 'middle' }, { id: id('price') }),
       text({ x: MARGIN, y: 175, w: 128, h: 6 }, c.supplier ?? '', { size: 11, weight: 300, color: COLORS.textSoft }, { id: id('supplier') })
     )
     if (c.url) el.push(articleLink({ x: MARGIN, y: 182, w: 60, h: 6 }, c.url, 10, id('link')))
@@ -286,7 +306,7 @@ function needPages(need: BookData['needs'][number]): Page[] {
       const tx = left + 51
       el.push(
         text({ x: tx, y: y + 1, w: 61, h: 15 }, truncate(a.name, 70), { size: 10, weight: 300, lineHeight: 1.25 }, { id: id('name') }),
-        text({ x: tx, y: y + 17, w: 61, h: 7 }, a.price, { size: 13, weight: 400 }, { id: id('price') }),
+        text({ x: tx, y: y + 17, w: 61, h: 7 }, priceLabel(a, prices), { size: 13, weight: 400 }, { id: id('price') }),
         text({ x: tx, y: y + 25, w: 61, h: 5 }, a.supplier ?? '', { size: 9, weight: 300, color: COLORS.textSoft }, { id: id('supplier') })
       )
       if (a.url) el.push(articleLink({ x: tx, y: y + 31, w: 40, h: 5 }, a.url, 9, id('link')))
@@ -307,7 +327,7 @@ function needPages(need: BookData['needs'][number]): Page[] {
       if (a.image) els.push(fitted(a.image, { x: x + 3, y: y + 3, w: 54, h: 40 }, id('photo')))
       els.push(
         text({ x, y: y + 49, w: 60, h: 11 }, truncate(a.name, 60), { size: 10, weight: 300, lineHeight: 1.25 }, { id: id('name') }),
-        text({ x, y: y + 61, w: 60, h: 6 }, a.price, { size: 12, weight: 400 }, { id: id('price') }),
+        text({ x, y: y + 61, w: 60, h: 6 }, priceLabel(a, prices), { size: 12, weight: 400 }, { id: id('price') }),
         text({ x, y: y + 68, w: 60, h: 5 }, a.supplier ?? '', { size: 9, weight: 300, color: COLORS.textSoft }, { id: id('supplier') })
       )
       if (a.url) els.push(articleLink({ x, y: y + 74, w: 40, h: 5 }, a.url, 9, id('link')))
@@ -317,14 +337,64 @@ function needPages(need: BookData['needs'][number]): Page[] {
   return pages
 }
 
-// Pages de la shopping list : les articles sans pièce, puis chaque pièce précédée de son intercalaire.
-function shoppingPages(needs: BookData['needs']): Page[] {
+// Choix sans autre proposition réunis par 4 sur une page (par exemple les luminaires d'une pièce).
+function choicesPages(needs: BookNeed[], prices: boolean): Page[] {
   const pages: Page[] = []
+  for (let start = 0; start < needs.length; start += CHOICES_PER_PAGE) {
+    const slice = needs.slice(start, start + CHOICES_PER_PAGE)
+    const el: Element[] = [
+      text({ x: MARGIN, y: 12, w: 200, h: 7 }, 'MES CHOIX', { size: 11, weight: 400, color: COLORS.taupeDark, letterSpacing: 2 }, { id: 'title' }),
+      text({ x: 297 - MARGIN - 90, y: 12, w: 90, h: 7 }, slice[0].room?.name.toUpperCase() ?? '', {
+        size: 11,
+        weight: 300,
+        color: COLORS.taupeDark,
+        letterSpacing: 2,
+        align: 'right'
+      })
+    ]
+    // Colonnes centrées s'il y a moins de 4 choix sur la page.
+    const w = 60
+    const gap = 5.67
+    const left = MARGIN + ((CHOICES_PER_PAGE - slice.length) * (w + gap)) / 2
+    slice.forEach((need, i) => {
+      const c = need.choice!
+      const id = (part: string) => `choice:${c.id}:${part}`
+      const x = left + i * (w + gap)
+      const photo = { x, y: 32, w, h: 80 }
+      el.push(
+        text({ x, y: 24, w, h: 6 }, need.title.toUpperCase(), { size: 8.5, weight: 500, color: COLORS.taupeDark, letterSpacing: 2 }, {
+          edit: `needLabel:${need.id}`,
+          id: id('label')
+        }),
+        { type: 'rect', ...photo, line: COLORS.taupeLight, id: id('frame') }
+      )
+      if (c.images[0]) el.push(fitted(c.images[0], { x: x + 4, y: photo.y + 4, w: w - 8, h: photo.h - 8 }, id('photo1')))
+      el.push(
+        text({ x, y: 116, w, h: 16 }, truncate(c.name, 80), { size: 11, weight: 300, lineHeight: 1.25 }, { id: id('name') }),
+        text({ x, y: 133, w, h: 8 }, priceLabel(c, prices, need.quantity), { size: prices ? 14 : 11, weight: prices ? 400 : 300, valign: 'middle' }, { id: id('price') }),
+        text({ x, y: 142, w, h: 6 }, c.supplier ?? '', { size: 10, weight: 300, color: COLORS.textSoft }, { id: id('supplier') })
+      )
+      if (c.url) el.push(articleLink({ x, y: 149, w: 45, h: 6 }, c.url, 9.5, id('link')))
+    })
+    pages.push({ key: `choices:${slice[0].id}`, elements: el })
+  }
+  return pages
+}
+
+// Pages de la shopping list : les articles sans pièce, puis chaque pièce précédée de son intercalaire.
+// En option, les choix sans autre proposition d'une pièce sont réunis, à la place du premier d'entre eux.
+function shoppingPages(needs: BookNeed[], prices: boolean, group: boolean): Page[] {
+  const pages: Page[] = []
+  const single = (n: BookNeed) => group && n.choice !== null && n.alternatives.length === 0
+  const sameRoom = (a: BookNeed, b: BookNeed) => (a.room?.id ?? null) === (b.room?.id ?? null)
   let room: number | null = null
   for (const need of needs) {
     if (need.room && need.room.id !== room) pages.push(dividerPage(need.room.name, 'Shopping list', `room:${need.room.id}`))
     room = need.room?.id ?? null
-    pages.push(...needPages(need))
+    if (!single(need)) pages.push(...needPages(need, prices))
+    else if (needs.find((n) => single(n) && sameRoom(n, need)) === need) {
+      pages.push(...choicesPages(needs.filter((n) => single(n) && sameRoom(n, need)), prices))
+    }
   }
   return pages
 }
@@ -336,23 +406,26 @@ function formatEuros(cents: number): string {
   return `${v.toLocaleString('fr-FR', { minimumFractionDigits: cents % 100 ? 2 : 0, maximumFractionDigits: 2 }).replace(/[  ]/g, ' ')} €`
 }
 
-function recapPages(needs: BookData['needs'], dateLabel: string): Page[] {
+function recapPages(needs: BookNeed[], dateLabel: string, prices: boolean): Page[] {
   const rows = needs.filter((n) => n.choice)
   if (!rows.length) return []
   const pages: Page[] = []
-  const total = rows.reduce((sum, n) => sum + (n.choice!.summable ? (n.choice!.priceCents ?? 0) : 0), 0)
+  const lineTotal = (n: BookNeed) => (n.choice!.summable ? (n.choice!.priceCents ?? 0) * n.quantity : 0)
+  const total = rows.reduce((sum, n) => sum + lineTotal(n), 0)
   const partial = rows.some((n) => !n.choice!.summable)
   // Une ligne de titre au début de chaque pièce.
-  const lines: (BookData['needs'][number] | string)[] = []
+  const lines: (BookNeed | string)[] = []
   rows.forEach((n, i) => {
     if (n.room && n.room.id !== rows[i - 1]?.room?.id) lines.push(n.room.name)
     lines.push(n)
   })
+  // Sans les prix, la colonne « Article » prend leur place.
   const cols = [
     { x: MARGIN, w: 58, label: 'Catégorie' },
-    { x: 80, w: 112, label: 'Article' },
-    { x: 194, w: 46, label: 'Fournisseur' },
-    { x: 240, w: 37, label: 'Prix' }
+    { x: 80, w: prices ? 97 : 134, label: 'Article' },
+    { x: prices ? 179 : 216, w: 44, label: 'Fournisseur' },
+    { x: prices ? 223 : 260, w: 17, label: 'Qté' },
+    ...(prices ? [{ x: 240, w: 37, label: 'Prix' }] : [])
   ]
   // Pages de RECAP_ROWS lignes ; un titre de pièce ne reste jamais seul en bas de page.
   const chunks: (typeof lines)[] = [[]]
@@ -371,7 +444,7 @@ function recapPages(needs: BookData['needs'], dateLabel: string): Page[] {
           weight: 500,
           color: COLORS.taupeDark,
           letterSpacing: 2,
-          align: i === 3 ? 'right' : 'left'
+          align: i >= 3 ? 'right' : 'left'
         })
       )
     )
@@ -385,12 +458,17 @@ function recapPages(needs: BookData['needs'], dateLabel: string): Page[] {
       el.push(
         line(MARGIN, y - 1, 257),
         text({ x: cols[0].x, y, w: cols[0].w, h: 8 }, truncate(n.title, 30), { size: 10, weight: 300, valign: 'middle', color: COLORS.textSoft }),
-        text({ x: cols[1].x, y, w: cols[1].w, h: 8 }, truncate(a.name, 60), { size: 10, weight: 300, valign: 'middle' }, a.url ? { link: a.url } : {}),
-        text({ x: cols[2].x, y, w: cols[2].w, h: 8 }, truncate(a.supplier ?? '', 24), { size: 10, weight: 300, valign: 'middle' }),
-        text({ x: cols[3].x, y, w: cols[3].w, h: 8 }, a.price, { size: 10, weight: 400, valign: 'middle', align: 'right' })
+        text({ x: cols[1].x, y, w: cols[1].w, h: 8 }, truncate(a.name, prices ? 52 : 72), { size: 10, weight: 300, valign: 'middle' }, a.url ? { link: a.url } : {}),
+        text({ x: cols[2].x, y, w: cols[2].w, h: 8 }, truncate(a.supplier ?? '', 22), { size: 10, weight: 300, valign: 'middle' }),
+        text({ x: cols[3].x, y, w: cols[3].w, h: 8 }, String(n.quantity), { size: 10, weight: 300, valign: 'middle', align: 'right' })
       )
+      // Prix de la ligne, quantité comprise s'il s'additionne ; sinon tel qu'affiché (« 2 × 45 €/m² »).
+      if (prices) {
+        const value = a.summable && a.priceCents !== null ? formatEuros(lineTotal(n)) : priceLabel(a, true, n.quantity)
+        el.push(text({ x: cols[4].x, y, w: cols[4].w, h: 8 }, value, { size: 10, weight: 400, valign: 'middle', align: 'right' }))
+      }
     })
-    if (c === chunks.length - 1) {
+    if (c === chunks.length - 1 && prices) {
       const y = head + 8 + slice.length * 9.5 + 2
       el.push(
         line(MARGIN, y - 1, 257, COLORS.taupe, 0.3),
@@ -415,8 +493,8 @@ function recapPages(needs: BookData['needs'], dateLabel: string): Page[] {
 
 const CHIPS_PER_PAGE = 8
 
-// Nuancier façon planche d'architecte : grands échantillons rectangulaires, numérotés, avec nom,
-// référence et code couleur sous chacun ; une marque par page, son nom en cartouche au-dessus d'un filet.
+// Nuancier façon planche d'architecte : grands échantillons rectangulaires, numérotés, avec le nom, la
+// référence et la marque (où trouver la teinte) sous chacun ; une marque par page, en cartouche au-dessus d'un filet.
 function paintPages(paints: BookData['paints']): Page[] {
   const pages: Page[] = []
   let n = 0
@@ -446,7 +524,7 @@ function paintPages(paints: BookData['paints']): Page[] {
           line(x, y + h + 3, w, COLORS.text, 0.15),
           text({ x, y: y + h + 5, w: 12, h: 5 }, two(n), { size: 8, weight: 500, color: COLORS.taupeDark, letterSpacing: 1 }),
           text({ x: x + 12, y: y + h + 5, w: w - 12, h: 5 }, p.name.toUpperCase(), { size: 9, weight: 400, letterSpacing: 1.5 }, { id: id('name') }),
-          text({ x: x + 12, y: y + h + 11, w: w - 12, h: 10 }, [p.reference, p.hex?.toUpperCase()].filter(Boolean).join('\n'), {
+          text({ x: x + 12, y: y + h + 11, w: w - 12, h: 10 }, [p.brand, p.reference].filter(Boolean).join('\n'), {
             size: 8,
             weight: 300,
             color: COLORS.textSoft,
@@ -459,6 +537,31 @@ function paintPages(paints: BookData['paints']): Page[] {
       }
       pages.push({ key: `paints:${pages.length + 1}`, elements: el })
     }
+  }
+  return pages
+}
+
+// Planche tendance : photos d'ambiance en mosaïque, 6 au plus par page.
+const TREND_PER_PAGE = 6
+
+function trendPages(trend: BookData['trend']): Page[] {
+  const pages: Page[] = []
+  for (let start = 0; start < trend.length; start += TREND_PER_PAGE) {
+    const slice = trend.slice(start, start + TREND_PER_PAGE)
+    const cols = slice.length <= 3 ? slice.length : slice.length === 4 ? 2 : 3
+    const rows = Math.ceil(slice.length / cols)
+    const area = { x: MARGIN, y: 26, w: 257, h: 162 }
+    const gap = 4
+    const w = (area.w - (cols - 1) * gap) / cols
+    const h = (area.h - (rows - 1) * gap) / rows
+    const el: Element[] = [
+      text({ x: MARGIN, y: 12, w: 200, h: 7 }, 'PLANCHE TENDANCE', { size: 11, weight: 400, color: COLORS.taupeDark, letterSpacing: 2 }, { id: 'title' })
+    ]
+    slice.forEach((t, i) => {
+      const box = { x: area.x + (i % cols) * (w + gap), y: area.y + Math.floor(i / cols) * (h + gap), w, h }
+      el.push(fitted(t.image, box, `trend:${t.id}`))
+    })
+    pages.push({ key: `trend:${pages.length + 1}`, elements: el })
   }
   return pages
 }
@@ -527,6 +630,7 @@ export function buildBook(d: BookData): Page[] {
   const plans = d.renders.filter((r) => r.section === 'plans')
   const changes = d.renders.filter((r) => r.section === 'changes')
   const sections: Section[] = [
+    ...(d.trend.length ? [{ title: 'Planche tendance', pages: trendPages(d.trend), divider: false }] : []),
     { title: 'Avant-propos', pages: [textPage('intro', d.intro, 'intro', d.designerName)], divider: false },
     { title: 'Vos envies', pages: [textPage('wishes', d.wishes, 'wishes', null)], divider: false }
   ]
@@ -536,7 +640,7 @@ export function buildBook(d: BookData): Page[] {
   if (d.needs.length) {
     sections.push({
       title: 'Shopping list',
-      pages: [...shoppingPages(d.needs), ...recapPages(d.needs, d.dateLabel)],
+      pages: [...shoppingPages(d.needs, d.showPrices, d.groupSingleChoices), ...recapPages(d.needs, d.dateLabel, d.showPrices)],
       divider: true
     })
   }

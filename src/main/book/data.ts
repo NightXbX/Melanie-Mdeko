@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import type { ArticleCard } from '@shared/api'
 import { formatPrice } from '@shared/format'
+import { DEFAULT_PAINT_BRAND } from '@shared/projects'
 import { getProject, getSettings, listAdjustments, listArtisans, listNotes, listPaints, projectTitle, wishesText } from '../projects'
 import type { BookArticle, BookData, ImageRef } from './layout'
 
@@ -67,7 +68,7 @@ export function bookData(db: DatabaseSync, dataRoot: string, projectId: number):
       group = { brand: p.brand, promoCode: p.promoCode, items: [] }
       paints.push(group)
     }
-    group.items.push({ name: p.name, reference: p.reference, hex: p.hex })
+    group.items.push({ name: p.name, reference: p.reference, hex: p.hex, brand: p.brand === DEFAULT_PAINT_BRAND ? null : p.brand })
   }
   const artisansById = new Map(listArtisans(db).map((a) => [a.id, a]))
 
@@ -99,10 +100,16 @@ export function bookData(db: DatabaseSync, dataRoot: string, projectId: number):
           id: n.id,
           title: n.label ?? n.category ?? 'Shopping list',
           room: project.rooms.find((r) => r.id === roomId) ?? null,
+          quantity: n.quantity,
           choice: n.choice ? bookArticle(db, dataRoot, n.choice, n.id) : null,
           alternatives: n.alternatives.map((a) => bookArticle(db, dataRoot, a))
         }))
     ),
+    showPrices: project.showPrices,
+    groupSingleChoices: project.groupSingleChoices,
+    trend: project.trendImages
+      .map((t) => ({ id: t.id, image: imageRef(db, dataRoot, 'id', t.id) }))
+      .filter((t): t is { id: number; image: ImageRef } => t.image !== null),
     paints,
     artisans: project.artisanIds
       .map((id) => artisansById.get(id))

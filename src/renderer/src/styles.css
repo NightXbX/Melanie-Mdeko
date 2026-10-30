@@ -2411,3 +2411,72 @@ img.pv {
   font-size: 11px;
   color: var(--text-tertiary);
 }
+
+/* Planche tendance */
+.trend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px;
+}
+
+.trend-photo {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  padding: 4px;
+  border: 1px solid var(--separator);
+  border-radius: 10px;
+  background: #fff;
+  cursor: grab;
+}
+
+.trend-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.trend-photo:hover .editor-thumb-remove {
+  display: flex;
+}
+
+.trend-pick {
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.trend-pick.is-selected {
+  border: 2px solid var(--accent);
+  opacity: 1;
+}
+
+.trend-pick-group h3 {
+  margin: 18px 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Shopping list du projet : options du book et quantité */
+.need-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  margin-bottom: 14px;
+}
+
+.need-quantity {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.need-quantity input {
+  width: 52px;
+  padding: 3px 6px;
+  border: 1px solid var(--separator);
+  border-radius: 6px;
+  font: inherit;
+  color: var(--text);
+  text-align: center;
+}

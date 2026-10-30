@@ -33,10 +33,13 @@ const data = (over: Partial<BookData> = {}): BookData => ({
     { id: 2, image: img, inset: img, section: 'plans', caption: 'Vue du salon' }
   ],
   needs: [
-    { id: 1, title: 'Fauteuils', room: null, choice: article('Fauteuil', 30000), alternatives: [article('Autre fauteuil', 25000)] },
-    { id: 2, title: 'Papiers peints', room: null, choice: article('Papier peint', 8900, false), alternatives: [] }
+    { id: 1, title: 'Fauteuils', room: null, quantity: 1, choice: article('Fauteuil', 30000), alternatives: [article('Autre fauteuil', 25000)] },
+    { id: 2, title: 'Papiers peints', room: null, quantity: 1, choice: article('Papier peint', 8900, false), alternatives: [] }
   ],
-  paints: [{ brand: 'Bilbo Quet Deco', promoCode: 'CODE', items: [{ name: 'Marelle', reference: null, hex: '#F4F2ED' }] }],
+  paints: [{ brand: 'Bilbo Quet Deco', promoCode: 'CODE', items: [{ name: 'Marelle', reference: 'Réf. 12', hex: '#F4F2ED', brand: 'Bilbo Quet Deco' }] }],
+  showPrices: true,
+  groupSingleChoices: false,
+  trend: [],
   artisans: [{ trade: 'Peintre', name: 'Atelier', city: 'Lille', phone: '01' }],
   notes: [],
   adjustments: {},
@@ -82,7 +85,7 @@ describe('design book', () => {
 
   it('accepte plus de 3 propositions, sur des pages « suite »', () => {
     const alternatives = Array.from({ length: 12 }, (_, i) => article(`Proposition ${i + 1}`, 1000 * (i + 1)))
-    const pages = buildBook(data({ needs: [{ id: 7, title: 'Tapis', room: null, choice: article('Tapis', 50000), alternatives }] }))
+    const pages = buildBook(data({ needs: [{ id: 7, title: 'Tapis', room: null, quantity: 1, choice: article('Tapis', 50000), alternatives }] }))
     expect(textsOf(byKey(pages, 'need:7'))).toContain('Proposition 3')
     expect(textsOf(byKey(pages, 'need:7'))).not.toContain('Proposition 4')
     expect(textsOf(byKey(pages, 'need:7:2'))).toEqual(expect.arrayContaining(['Proposition 4', 'Proposition 11']))
@@ -94,9 +97,9 @@ describe('design book', () => {
     const pages = buildBook(
       data({
         needs: [
-          { id: 1, title: 'Fauteuils', room: null, choice: article('Fauteuil', 30000), alternatives: [] },
-          { id: 2, title: 'Tapis', room: salon, choice: article('Tapis', 9000), alternatives: [] },
-          { id: 4, title: 'Suspensions', room: salon, choice: article('Suspension', 9000), alternatives: [] }
+          { id: 1, title: 'Fauteuils', room: null, quantity: 1, choice: article('Fauteuil', 30000), alternatives: [] },
+          { id: 2, title: 'Tapis', room: salon, quantity: 1, choice: article('Tapis', 9000), alternatives: [] },
+          { id: 4, title: 'Suspensions', room: salon, quantity: 1, choice: article('Suspension', 9000), alternatives: [] }
         ]
       })
     )
@@ -167,7 +170,7 @@ describe('design book', () => {
   it('montre plusieurs photos pour « Mon choix »', () => {
     const photos = [img, { ...img, url: 'mdeko://media/y.jpg' }, { ...img, url: 'mdeko://media/z.jpg' }]
     const choice = { ...article('Canapé', 90000), images: photos }
-    const page = byKey(buildBook(data({ needs: [{ id: 9, title: 'Canapés', room: null, choice, alternatives: [] }] })), 'need:9')
+    const page = byKey(buildBook(data({ needs: [{ id: 9, title: 'Canapés', room: null, quantity: 1, choice, alternatives: [] }] })), 'need:9')
     const shown = page.elements.filter((e) => e.type === 'image')
     expect(shown).toHaveLength(3)
     expect(new Set(shown.map((e) => e.id)).size).toBe(3)
@@ -175,14 +178,51 @@ describe('design book', () => {
 
   it('accepte un « Mon choix » sans photo', () => {
     const choice = { ...article('Sur mesure', null), image: null, images: [] }
-    const page = byKey(buildBook(data({ needs: [{ id: 9, title: 'Banquette', room: null, choice, alternatives: [] }] })), 'need:9')
+    const page = byKey(buildBook(data({ needs: [{ id: 9, title: 'Banquette', room: null, quantity: 1, choice, alternatives: [] }] })), 'need:9')
     expect(page.elements.filter((e) => e.type === 'image')).toHaveLength(0)
   })
 
-  it('présente les teintes en nuancier, numérotées avec leur code', () => {
+  it('présente les teintes en nuancier, numérotées avec leur marque, sans code couleur', () => {
     const page = byKey(buildBook(data()), 'paints:1')
-    expect(textsOf(page)).toEqual(expect.arrayContaining(['BILBO QUET DECO', 'NUANCIER', '01', 'MARELLE', '#F4F2ED', 'CODE PROMO : CODE']))
+    expect(textsOf(page)).toEqual(expect.arrayContaining(['BILBO QUET DECO', 'NUANCIER', '01', 'MARELLE', 'Bilbo Quet Deco\nRéf. 12', 'CODE PROMO : CODE']))
+    expect(textsOf(page).join(' ')).not.toContain('#F4F2ED')
     expect(page.elements.some((e) => e.type === 'rect' && e.fill === '#F4F2ED')).toBe(true)
+  })
+
+  it('compte les quantités dans les prix et le total', () => {
+    const needs: BookData['needs'] = [{ id: 1, title: 'Chaises', room: null, quantity: 4, choice: article('Chaise', 5000), alternatives: [] }]
+    const pages = buildBook(data({ needs }))
+    expect(textsOf(byKey(pages, 'need:1'))).toContain('4 × 50 €')
+    expect(textsOf(byKey(pages, 'recap:1'))).toEqual(expect.arrayContaining(['QTÉ', '4', '200 €']))
+  })
+
+  it('peut masquer les prix', () => {
+    const needs: BookData['needs'] = [{ id: 1, title: 'Chaises', room: null, quantity: 2, choice: article('Chaise', 5000), alternatives: [article('Tabouret', 3000)] }]
+    const pages = buildBook(data({ needs, showPrices: false }))
+    const texts = pages.flatMap(textsOf).join(' | ')
+    expect(texts).not.toContain('50 €')
+    expect(texts).not.toContain('Total')
+    expect(textsOf(byKey(pages, 'need:1'))).toContain('Quantité : 2')
+  })
+
+  it('peut réunir les choix sans autre proposition d’une pièce sur une même page', () => {
+    const salon = { id: 3, name: 'Salon' }
+    const needs: BookData['needs'] = [
+      { id: 1, title: 'Fauteuils', room: salon, quantity: 1, choice: article('Fauteuil', 30000), alternatives: [article('Autre', 1000)] },
+      ...[2, 4, 5, 6, 8].map((id) => ({ id, title: 'Luminaires', room: salon, quantity: 1, choice: article(`Lampe ${id}`, 9000), alternatives: [] }))
+    ]
+    const keys = buildBook(data({ needs, groupSingleChoices: true })).map((p) => p.key)
+    expect(keys.filter((k) => k.startsWith('choices:'))).toEqual(['choices:2', 'choices:8'])
+    expect(keys.some((k) => k === 'need:4')).toBe(false)
+    expect(keys).toContain('need:1')
+  })
+
+  it('ajoute une planche tendance au début, en option', () => {
+    const trend = Array.from({ length: 7 }, (_, i) => ({ id: 50 + i, image: img }))
+    const pages = buildBook(data({ trend }))
+    expect(pages.slice(2, 4).map((p) => p.key)).toEqual(['trend:1', 'trend:2'])
+    expect(byKey(pages, 'trend:1').elements.filter((e) => e.type === 'image')).toHaveLength(6)
+    expect(textsOf(pages[1]).slice(0, 2)).toEqual(['3-4.', 'Planche tendance'])
   })
 
   it('pose la 4e de couverture dans un grand disque taupe', () => {

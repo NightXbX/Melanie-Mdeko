@@ -274,7 +274,7 @@ function NewPaintForm({ brands, onDone }: { brands: string[]; onDone(id: number 
   return (
     <form className="inline-form" onSubmit={submit}>
       <label className="field">
-        <span>Marque</span>
+        <span>Marque ou magasin</span>
         <input list="mdeko-paint-brands" value={paint.brand} onChange={(e) => setPaint({ ...paint, brand: e.target.value })} />
         <datalist id="mdeko-paint-brands">
           {brands.map((b) => (
@@ -308,9 +308,40 @@ function NewPaintForm({ brands, onDone }: { brands: string[]; onDone(id: number 
 
 // --- Artisans -------------------------------------------------------------------------------------
 
+export type ArtisanDraft = Omit<Artisan, 'id'> & { id: number | null }
+export const NEW_ARTISAN: ArtisanDraft = { id: null, trade: '', name: '', city: '', phone: '', email: '' }
+
+// Fiche d'un artisan du carnet (nouveau ou à modifier) ; onDone reçoit son identifiant une fois enregistré.
+export function ArtisanForm({ initial, onDone }: { initial: ArtisanDraft; onDone(id: number | null): void }) {
+  const [editing, setEditing] = useState(initial)
+  const save = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!editing.trade.trim() || !editing.name.trim()) return
+    onDone(await window.mdeko.projects.saveArtisan(editing))
+  }
+  return (
+    <form className="inline-form" onSubmit={save}>
+      {(['trade', 'name', 'city', 'phone', 'email'] as const).map((k) => (
+        <label key={k} className="field">
+          <span>{{ trade: 'Métier', name: 'Nom', city: 'Ville', phone: 'Téléphone', email: 'E-mail' }[k]}</span>
+          <input autoFocus={k === 'trade'} value={editing[k] ?? ''} onChange={(e) => setEditing({ ...editing, [k]: e.target.value })} />
+        </label>
+      ))}
+      <div className="inline-form-actions">
+        <button type="button" className="button" onClick={() => onDone(null)}>
+          Annuler
+        </button>
+        <button type="submit" className="button button-primary" disabled={!editing.trade.trim() || !editing.name.trim()}>
+          Enregistrer
+        </button>
+      </div>
+    </form>
+  )
+}
+
 export function ArtisansSection({ project, reload }: SectionProps) {
   const [artisans, setArtisans] = useState<Artisan[]>([])
-  const [editing, setEditing] = useState<(Omit<Artisan, 'id'> & { id: number | null }) | null>(null)
+  const [editing, setEditing] = useState<ArtisanDraft | null>(null)
   const selected = project.artisanIds
   const load = () => void window.mdeko.projects.listArtisans().then(setArtisans)
   useEffect(load, [])
@@ -326,14 +357,11 @@ export function ArtisansSection({ project, reload }: SectionProps) {
   })
   const chosen = selected.map((id) => artisans.find((a) => a.id === id)).filter((a) => a !== undefined)
 
-  const save = async (e: FormEvent) => {
-    e.preventDefault()
-    if (!editing?.trade.trim() || !editing.name.trim()) return
-    const id = await window.mdeko.projects.saveArtisan(editing)
-    const isNew = editing.id === null
+  const done = async (id: number | null) => {
+    const isNew = editing?.id === null
     setEditing(null)
     load()
-    if (isNew) await toggle(id)
+    if (id !== null && isNew) await toggle(id)
   }
 
   return (
@@ -342,34 +370,13 @@ export function ArtisansSection({ project, reload }: SectionProps) {
         <button
           type="button"
           className="button"
-          onClick={() => setEditing({ id: null, trade: '', name: '', city: '', phone: '', email: '' })}
+          onClick={() => setEditing(NEW_ARTISAN)}
         >
           <Icon name="plus" size={14} />
           Nouvel artisan
         </button>
       </SectionHeader>
-      {editing && (
-        <form className="inline-form" onSubmit={save}>
-          {(['trade', 'name', 'city', 'phone'] as const).map((k) => (
-            <label key={k} className="field">
-              <span>{{ trade: 'Métier', name: 'Nom', city: 'Ville', phone: 'Téléphone' }[k]}</span>
-              <input
-                autoFocus={k === 'trade'}
-                value={editing[k] ?? ''}
-                onChange={(e) => setEditing({ ...editing, [k]: e.target.value })}
-              />
-            </label>
-          ))}
-          <div className="inline-form-actions">
-            <button type="button" className="button" onClick={() => setEditing(null)}>
-              Annuler
-            </button>
-            <button type="submit" className="button button-primary">
-              Enregistrer
-            </button>
-          </div>
-        </form>
-      )}
+      {editing && <ArtisanForm key={editing.id ?? 'nouveau'} initial={editing} onDone={(id) => void done(id)} />}
       {chosen.length > 0 && (
         <>
           <h3 className="section-subtitle">Dans ce design book</h3>

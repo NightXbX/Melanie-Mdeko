@@ -5,9 +5,10 @@ import { Icon } from '../Icon'
 import { BookPreview } from './BookPreview'
 import { NeedsSection } from './NeedsSection'
 import { RendersSection } from './RendersSection'
+import { TrendSection } from './TrendSection'
 import { ArtisansSection, ClientSection, PaintsSection, TextsSection, WishesSection } from './sections'
 
-type Step = 'client' | 'wishes' | 'renders' | 'needs' | 'paints' | 'artisans' | 'texts'
+type Step = 'client' | 'trend' | 'wishes' | 'renders' | 'needs' | 'paints' | 'artisans' | 'texts'
 
 export interface SectionProps {
   project: Project
@@ -54,6 +55,7 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
   const title = [project.clientTitle, project.clientName].filter(Boolean).join(' ')
   const steps: { id: Step; label: string; count?: number }[] = [
     { id: 'client', label: 'Client' },
+    { id: 'trend', label: 'Planche tendance', count: project.trendImages.length },
     { id: 'wishes', label: 'Vos envies' },
     { id: 'renders', label: 'Plans 3D', count: project.renders.length },
     { id: 'needs', label: 'Shopping list', count: project.needs.length },
@@ -119,6 +121,7 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
         </nav>
         <div className="project-body">
           {step === 'client' && <ClientSection {...props} onDeleted={onClose} />}
+          {step === 'trend' && <TrendSection {...props} />}
           {step === 'wishes' && <WishesSection {...props} />}
           {step === 'renders' && <RendersSection {...props} />}
           {step === 'needs' && <NeedsSection {...props} />}

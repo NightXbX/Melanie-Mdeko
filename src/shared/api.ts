@@ -105,6 +105,9 @@ export interface ProjectsApi {
   setNeedAlternatives(needId: number, articleIds: number[]): Promise<void>
   setNeedImages(needId: number, imageIds: number[]): Promise<void>
   removeNeed(needId: number): Promise<void>
+  setNeedQuantity(needId: number, quantity: number): Promise<void>
+  setTrendImages(id: number, imageIds: number[]): Promise<void>
+  listInspirationImages(): Promise<{ id: number; url: string; title: string }[]>
   listPaints(): Promise<Paint[]>
   createPaint(paint: Omit<Paint, 'id' | 'promoCode'>): Promise<number>
   listArtisans(): Promise<Artisan[]>
@@ -340,7 +343,7 @@ export const IPC = {
 
 export const PROJECT_METHODS = [
   'list', 'create', 'get', 'update', 'trash', 'restore', 'setRooms', 'addRenders', 'updateRender', 'removeRender',
-  'reorder', 'addNeed', 'setNeedRoom', 'setNeedChoice', 'setNeedAlternatives', 'setNeedImages', 'removeNeed', 'listPaints', 'createPaint',
+  'reorder', 'addNeed', 'setNeedRoom', 'setNeedChoice', 'setNeedAlternatives', 'setNeedImages', 'removeNeed', 'setNeedQuantity', 'setTrendImages', 'listInspirationImages', 'listPaints', 'createPaint',
   'listArtisans', 'saveArtisan', 'setLinks', 'getSettings', 'saveSettings', 'pages', 'editText', 'addNote', 'moveNote',
   'deleteNote', 'adjust', 'resetPage', 'export', 'openFolder'
 ] as const satisfies readonly (keyof ProjectsApi)[]
