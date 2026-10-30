@@ -29,6 +29,15 @@ export interface ProjectRender {
   section: RenderSection
   caption: string | null
   edited: boolean // une version retouchée par l'assistant remplace l'original dans le book
+  markers: RenderMarker[]
+}
+
+// Objet repéré sur un rendu : position de 0 à 1 sur l'image (0,0 = en haut à gauche).
+export interface RenderMarker {
+  id: number
+  x: number
+  y: number
+  article: ArticleCard
 }
 
 export interface ProjectNeed {

@@ -4,13 +4,16 @@ import { ArticleCard } from '../ArticleCard'
 import { Icon } from '../Icon'
 
 // Choisir un article de la shopping list (même recherche que l'écran principal).
+// « featured » : articles montrés en premier tant que rien n'est tapé (ceux du projet, par exemple).
 export function ArticlePicker({
   title,
+  featured,
   onPick,
   onCreate,
   onCancel
 }: {
   title: string
+  featured?: { title: string; items: Card[] }
   onPick(id: number): void
   onCreate?(): void
   onCancel(): void
@@ -51,6 +54,17 @@ export function ArticlePicker({
           <input autoFocus type="search" placeholder="Rechercher dans la shopping list…" value={query} onChange={(e) => setQuery(e.target.value)} />
         </label>
         <div className="picker-results">
+          {featured && featured.items.length > 0 && !query.trim() && (
+            <>
+              <h3 className="picker-heading">{featured.title}</h3>
+              <div className="grid">
+                {featured.items.map((a) => (
+                  <ArticleCard key={a.id} article={a} onOpen={onPick} />
+                ))}
+              </div>
+              <h3 className="picker-heading">Toute la shopping list</h3>
+            </>
+          )}
           <div className="grid">
             {items.map((a) => (
               <ArticleCard key={a.id} article={a} onOpen={onPick} />

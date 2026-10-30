@@ -98,6 +98,10 @@ export interface ProjectsApi {
   addRenders(id: number, imageIds: number[], section: RenderSection): Promise<void>
   updateRender(renderId: number, patch: { section?: RenderSection; insetImageId?: number | null; caption?: string | null }): Promise<void>
   removeRender(renderId: number): Promise<void>
+  replaceRenderImage(renderId: number, imageId: number): Promise<void>
+  addMarker(renderId: number, articleId: number, x: number, y: number): Promise<number>
+  moveMarker(markerId: number, x: number, y: number): Promise<void>
+  removeMarker(markerId: number): Promise<void>
   reorder(table: 'renders' | 'needs', ids: number[]): Promise<void>
   addNeed(id: number, articleId: number, roomId?: number | null): Promise<number>
   setNeedRoom(needId: number, roomId: number | null): Promise<void>
@@ -110,6 +114,10 @@ export interface ProjectsApi {
   listInspirationImages(): Promise<{ id: number; url: string; title: string }[]>
   listPaints(): Promise<Paint[]>
   createPaint(paint: Omit<Paint, 'id' | 'promoCode'>): Promise<number>
+  updatePaint(paintId: number, paint: Omit<Paint, 'id' | 'promoCode'>): Promise<void>
+  deletePaint(paintId: number): Promise<void>
+  countPaintProjects(paintId: number): Promise<number>
+  updatePaintBrand(from: string, to: { name: string; promoCode: string | null }): Promise<void>
   listArtisans(): Promise<Artisan[]>
   saveArtisan(artisan: Omit<Artisan, 'id'> & { id: number | null }): Promise<number>
   setLinks(id: number, table: 'project_paints' | 'project_artisans', ids: number[]): Promise<void>
@@ -344,6 +352,7 @@ export const IPC = {
 export const PROJECT_METHODS = [
   'list', 'create', 'get', 'update', 'trash', 'restore', 'setRooms', 'addRenders', 'updateRender', 'removeRender',
   'reorder', 'addNeed', 'setNeedRoom', 'setNeedChoice', 'setNeedAlternatives', 'setNeedImages', 'removeNeed', 'setNeedQuantity', 'setTrendImages', 'listInspirationImages', 'listPaints', 'createPaint',
+  'updatePaint', 'deletePaint', 'countPaintProjects', 'updatePaintBrand', 'replaceRenderImage', 'addMarker', 'moveMarker', 'removeMarker',
   'listArtisans', 'saveArtisan', 'setLinks', 'getSettings', 'saveSettings', 'pages', 'editText', 'addNote', 'moveNote',
   'deleteNote', 'adjust', 'resetPage', 'export', 'openFolder'
 ] as const satisfies readonly (keyof ProjectsApi)[]

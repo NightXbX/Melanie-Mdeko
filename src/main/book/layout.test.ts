@@ -36,7 +36,7 @@ const data = (over: Partial<BookData> = {}): BookData => ({
     { id: 1, title: 'Fauteuils', room: null, quantity: 1, choice: article('Fauteuil', 30000), alternatives: [article('Autre fauteuil', 25000)] },
     { id: 2, title: 'Papiers peints', room: null, quantity: 1, choice: article('Papier peint', 8900, false), alternatives: [] }
   ],
-  paints: [{ brand: 'Bilbo Quet Deco', promoCode: 'CODE', items: [{ name: 'Marelle', reference: 'Réf. 12', hex: '#F4F2ED', brand: 'Bilbo Quet Deco' }] }],
+  paints: [{ brand: 'Bilboquet Deco', promoCode: 'CODE', items: [{ name: 'Marelle', reference: 'Réf. 12', hex: '#F4F2ED', brand: 'Bilboquet Deco' }] }],
   showPrices: true,
   groupSingleChoices: false,
   trend: [],
@@ -184,7 +184,7 @@ describe('design book', () => {
 
   it('présente les teintes en nuancier, numérotées avec leur marque, sans code couleur', () => {
     const page = byKey(buildBook(data()), 'paints:1')
-    expect(textsOf(page)).toEqual(expect.arrayContaining(['BILBO QUET DECO', 'NUANCIER', '01', 'MARELLE', 'Bilbo Quet Deco\nRéf. 12', 'CODE PROMO : CODE']))
+    expect(textsOf(page)).toEqual(expect.arrayContaining(['BILBOQUET DECO', 'NUANCIER', '01', 'MARELLE', 'Bilboquet Deco\nRéf. 12', 'CODE PROMO : CODE']))
     expect(textsOf(page).join(' ')).not.toContain('#F4F2ED')
     expect(page.elements.some((e) => e.type === 'rect' && e.fill === '#F4F2ED')).toBe(true)
   })

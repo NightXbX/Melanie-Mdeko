@@ -2,8 +2,15 @@ import type { DatabaseSync } from 'node:sqlite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { migrate, openDatabase } from './db/database'
 import {
+  addMarker,
   addNeed,
   adjustElement,
+  deletePaint,
+  normalizeHex,
+  removeMarker,
+  replaceRenderImage,
+  updatePaint,
+  updatePaintBrand,
   listAdjustments,
   resetPageAdjustments,
   setNeedImages,
@@ -105,13 +112,75 @@ describe('besoins', () => {
 describe('teintes et artisans', () => {
   it('crée une teinte et la rattache au projet', () => {
     const id = createProject(db, '', 'Durand')
-    const paint = createPaint(db, { brand: 'Bilbo Quet Deco', name: 'Marelle', reference: null, hex: '#F4F2ED' })
+    const paint = createPaint(db, { brand: 'Bilboquet Deco', name: 'Marelle', reference: null, hex: '#F4F2ED' })
     const artisan = saveArtisan(db, { id: null, trade: 'Peintre', name: 'Atelier', city: 'Lille', phone: null, email: null })
     setProjectLinks(db, id, 'project_paints', [paint])
     setProjectLinks(db, id, 'project_artisans', [artisan])
     expect(listPaints(db).map((p) => p.name)).toEqual(['Marelle'])
     expect(getProject(db, id)!.paintIds).toEqual([paint])
     expect(getProject(db, id)!.artisanIds).toEqual([artisan])
+  })
+
+  it('modifie et supprime une teinte', () => {
+    const id = createProject(db, '', 'Durand')
+    const paint = createPaint(db, { brand: 'Farrow & Ball', name: 'Marelle', reference: null, hex: 'f4f2ed' })
+    setProjectLinks(db, id, 'project_paints', [paint])
+    expect(listPaints(db)[0].hex).toBe('#F4F2ED')
+    updatePaint(db, paint, { brand: 'Tollens', name: ' Lin ', reference: 'T-12', hex: 'pas une couleur' })
+    expect(listPaints(db)).toEqual([expect.objectContaining({ brand: 'Tollens', name: 'Lin', reference: 'T-12', hex: null })])
+    deletePaint(db, paint)
+    expect(listPaints(db)).toEqual([])
+    expect(getProject(db, id)!.paintIds).toEqual([])
+  })
+
+  it('lit un code couleur écrit à la main', () => {
+    expect(normalizeHex('#e8e2d6')).toBe('#E8E2D6')
+    expect(normalizeHex(' abc ')).toBe('#AABBCC')
+    expect(normalizeHex('#12345')).toBeNull()
+    expect(normalizeHex('')).toBeNull()
+  })
+
+  it('renomme une marque, ou la réunit à une marque existante', () => {
+    const a = createPaint(db, { brand: 'Bilbo', name: 'Marelle', reference: null, hex: null })
+    const b = createPaint(db, { brand: 'Unikalo', name: 'Craie', reference: null, hex: null })
+    updatePaintBrand(db, 'Bilbo', { name: 'Bilboquet Deco', promoCode: 'PRO' })
+    expect(listPaints(db).find((p) => p.id === a)).toMatchObject({ brand: 'Bilboquet Deco', promoCode: 'PRO' })
+    updatePaintBrand(db, 'Unikalo', { name: 'bilboquet deco', promoCode: null })
+    expect(listPaints(db).find((p) => p.id === b)).toMatchObject({ brand: 'Bilboquet Deco', promoCode: 'PRO' })
+    expect((db.prepare('SELECT count(*) AS n FROM paint_brands').get() as { n: number }).n).toBe(1)
+  })
+})
+
+describe('rendus 3D', () => {
+  it('repère un objet et l’ajoute au projet s’il n’y est pas encore', () => {
+    const id = createProject(db, '', 'Durand')
+    db.exec("INSERT INTO images (id, rel_path) VALUES (1, 'a.jpg'), (2, 'b.jpg')")
+    db.prepare('INSERT INTO renders (id, project_id, image_id) VALUES (1, ?, 1)').run(id)
+    addNeed(db, id, 1)
+    addMarker(db, 1, 1, 0.2, 0.3)
+    const marker = addMarker(db, 1, 6, 1.4, -1)
+    const p = getProject(db, id)!
+    expect(p.needs.map((n) => n.choice?.id)).toEqual([1, 6])
+    expect(p.renders[0].markers.map((m) => [m.article.id, m.x, m.y])).toEqual([
+      [1, 0.2, 0.3],
+      [6, 1, 0]
+    ])
+    removeMarker(db, marker)
+    expect(getProject(db, id)!.renders[0].markers).toHaveLength(1)
+    expect(getProject(db, id)!.needs).toHaveLength(2)
+  })
+
+  it('remplace l’image d’un rendu en gardant sa place et ses repères', () => {
+    const id = createProject(db, '', 'Durand')
+    db.exec("INSERT INTO images (id, rel_path) VALUES (1, 'a.jpg'), (2, 'b.jpg'), (3, 'ia.jpg')")
+    db.prepare('INSERT INTO renders (id, project_id, image_id) VALUES (1, ?, 1)').run(id)
+    db.exec("INSERT INTO render_versions (id, render_id, image_id) VALUES (1, 1, 3); UPDATE renders SET active_version_id = 1")
+    addMarker(db, 1, 1, 0.5, 0.5)
+    replaceRenderImage(db, 1, 2)
+    const r = getProject(db, id)!.renders[0]
+    expect(r.imageId).toBe(2)
+    expect(r.edited).toBe(false)
+    expect(r.markers).toHaveLength(1)
   })
 })
 

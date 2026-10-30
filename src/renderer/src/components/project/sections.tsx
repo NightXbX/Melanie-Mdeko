@@ -182,9 +182,12 @@ export function TextsSection({ project, settings, reload }: SectionProps) {
 
 // --- Couleurs -------------------------------------------------------------------------------------
 
+type PaintDraft = { id: number | null; brand: string; name: string; reference: string; hex: string }
+
 export function PaintsSection({ project, reload }: SectionProps) {
   const [paints, setPaints] = useState<Paint[]>([])
-  const [adding, setAdding] = useState(false)
+  const [editing, setEditing] = useState<PaintDraft | null>(null)
+  const [editingBrand, setEditingBrand] = useState<string | null>(null)
   const selected = project.paintIds
 
   const load = () => void window.mdeko.projects.listPaints().then(setPaints)
@@ -203,21 +206,44 @@ export function PaintsSection({ project, reload }: SectionProps) {
 
   const brands = [...new Set(paints.map((p) => p.brand))]
   const chosen = selected.map((id) => paints.find((p) => p.id === id)).filter((p) => p !== undefined)
+  const edit = (p: Paint) => setEditing({ id: p.id, brand: p.brand, name: p.name, reference: p.reference ?? '', hex: p.hex ?? '' })
+
+  const swatch = (p: Paint) => (
+    <>
+      <span className={`paint-swatch${p.hex ? '' : ' is-empty'}`} style={p.hex ? { background: p.hex } : undefined} />
+      <span className="paint-name">{p.name}</span>
+      {p.reference && <span className="paint-ref">{p.reference}</span>}
+    </>
+  )
+  const editButton = (p: Paint) => (
+    <button type="button" className="paint-edit" aria-label={`Modifier ${p.name}`} onClick={() => edit(p)}>
+      <Icon name="pencil" size={11} />
+    </button>
+  )
+
   return (
     <div className="section">
       <SectionHeader title="Teintes et couleurs">
-        <button type="button" className="button" onClick={() => setAdding(true)}>
+        <button
+          type="button"
+          className="button"
+          onClick={() => setEditing({ id: null, brand: brands[0] ?? DEFAULT_PAINT_BRAND, name: '', reference: '', hex: '' })}
+        >
           <Icon name="plus" size={14} />
           Nouvelle teinte
         </button>
       </SectionHeader>
-      {adding && (
-        <NewPaintForm
+      {editing && (
+        <PaintForm
+          key={editing.id ?? 'nouvelle'}
+          initial={editing}
           brands={brands}
           onDone={async (id) => {
-            setAdding(false)
+            const isNew = editing.id === null
+            setEditing(null)
             load()
-            if (id) await toggle(id)
+            if (id !== null && isNew) await toggle(id)
+            else await reload()
           }}
         />
       )}
@@ -228,9 +254,8 @@ export function PaintsSection({ project, reload }: SectionProps) {
           <div className="paint-grid drop-horizontal">
             {chosen.map((p) => (
               <div key={p.id} className="paint is-selected" {...order.item(p.id)}>
-                <span className="paint-swatch" style={{ background: p.hex ?? '#fff' }} />
-                <span className="paint-name">{p.name}</span>
-                {p.reference && <span className="paint-ref">{p.reference}</span>}
+                {swatch(p)}
+                {editButton(p)}
                 <button type="button" className="paint-remove" aria-label={`Retirer ${p.name}`} onClick={() => void toggle(p.id)}>
                   <Icon name="xmark" size={9} />
                 </button>
@@ -241,21 +266,33 @@ export function PaintsSection({ project, reload }: SectionProps) {
       )}
       {brands.map((brand) => (
         <div key={brand} className="paint-group">
-          <h3>{brand}</h3>
+          <div className="paint-group-head">
+            <h3>{brand}</h3>
+            <button type="button" className="button button-plain" onClick={() => setEditingBrand(brand)}>
+              Modifier la marque
+            </button>
+          </div>
+          {editingBrand === brand && (
+            <BrandForm
+              name={brand}
+              promoCode={paints.find((p) => p.brand === brand)?.promoCode ?? null}
+              onDone={async () => {
+                setEditingBrand(null)
+                load()
+                await reload()
+              }}
+            />
+          )}
           <div className="paint-grid">
             {paints
               .filter((p) => p.brand === brand)
               .map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className={`paint${selected.includes(p.id) ? ' is-selected' : ''}`}
-                  onClick={() => void toggle(p.id)}
-                >
-                  <span className="paint-swatch" style={{ background: p.hex ?? '#fff' }} />
-                  <span className="paint-name">{p.name}</span>
-                  {p.reference && <span className="paint-ref">{p.reference}</span>}
-                </button>
+                <div key={p.id} className={`paint${selected.includes(p.id) ? ' is-selected' : ''}`}>
+                  <button type="button" className="paint-toggle" aria-pressed={selected.includes(p.id)} onClick={() => void toggle(p.id)}>
+                    {swatch(p)}
+                  </button>
+                  {editButton(p)}
+                </div>
               ))}
           </div>
         </div>
@@ -264,15 +301,53 @@ export function PaintsSection({ project, reload }: SectionProps) {
   )
 }
 
-function NewPaintForm({ brands, onDone }: { brands: string[]; onDone(id: number | null): void }) {
-  const [paint, setPaint] = useState({ brand: brands[0] ?? DEFAULT_PAINT_BRAND, name: '', reference: '', hex: '#e8e2d6' })
+// Teintes proposées pour aller vite ; « Autre couleur… » ouvre le sélecteur de couleurs du Mac.
+const PALETTE = [
+  '#FFFFFF', '#F4F1EA', '#EDE6D8', '#E3D9C6', '#D6C9B1', '#BFB6A3', '#A39A88', '#7D7466',
+  '#E9E9E6', '#D3D3CF', '#B2B3AF', '#8C8E8B', '#5F6264', '#3C4043', '#2B3840', '#1E1F21',
+  '#E8D3C0', '#D9A98A', '#C27C5A', '#A35A3E', '#E6D9A8', '#C9A74B', '#9C8A4E', '#6E6A3A',
+  '#D5DDCF', '#AEBBA3', '#7F9178', '#4E6450', '#CFDCE3', '#9DB4C0', '#5E7D8E', '#2F4A5C',
+  '#E9D6D8', '#CFA9AE', '#A4737C', '#5E4553'
+]
+
+function PaintForm({ initial, brands, onDone }: { initial: PaintDraft; brands: string[]; onDone(id: number | null): void }) {
+  const [paint, setPaint] = useState(initial)
+  const [error, setError] = useState<string | null>(null)
+  const hex = /^#?[0-9a-f]{6}$/i.test(paint.hex.trim()) ? `#${paint.hex.trim().replace(/^#/, '')}`.toUpperCase() : null
+  const invalid = paint.hex.trim() !== '' && !hex && !/^#?[0-9a-f]{3}$/i.test(paint.hex.trim())
+
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!paint.name.trim()) return
-    onDone(await window.mdeko.projects.createPaint({ ...paint, reference: paint.reference || null }))
+    if (!paint.name.trim() || invalid) return
+    const data = { brand: paint.brand, name: paint.name, reference: paint.reference || null, hex: paint.hex || null }
+    try {
+      if (paint.id === null) onDone(await window.mdeko.projects.createPaint(data))
+      else {
+        await window.mdeko.projects.updatePaint(paint.id, data)
+        onDone(paint.id)
+      }
+    } catch (err) {
+      setError((err as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))
+    }
   }
+
+  const remove = async () => {
+    if (paint.id === null) return
+    const used = await window.mdeko.projects.countPaintProjects(paint.id)
+    const ok = await window.mdeko.confirm(
+      `Supprimer la teinte « ${initial.name} » ?`,
+      used > 0
+        ? `Elle sera aussi retirée ${used === 1 ? 'du projet qui l’utilise' : `des ${used} projets qui l’utilisent`}.`
+        : 'Elle ne sera plus proposée dans vos projets.',
+      'Supprimer la teinte'
+    )
+    if (!ok) return
+    await window.mdeko.projects.deletePaint(paint.id)
+    onDone(null)
+  }
+
   return (
-    <form className="inline-form" onSubmit={submit}>
+    <form className="inline-form paint-form" onSubmit={submit}>
       <label className="field">
         <span>Marque ou magasin</span>
         <input list="mdeko-paint-brands" value={paint.brand} onChange={(e) => setPaint({ ...paint, brand: e.target.value })} />
@@ -290,16 +365,83 @@ function NewPaintForm({ brands, onDone }: { brands: string[]; onDone(id: number 
         <span>Référence</span>
         <input value={paint.reference} onChange={(e) => setPaint({ ...paint, reference: e.target.value })} />
       </label>
-      <label className="field field-color">
-        <span>Couleur</span>
-        <input type="color" value={paint.hex} onChange={(e) => setPaint({ ...paint, hex: e.target.value })} />
+      <label className="field">
+        <span>Code couleur</span>
+        <span className="paint-code">
+          <span className={`paint-code-swatch${hex ? '' : ' is-empty'}`} style={hex ? { background: hex } : undefined} />
+          <input
+            value={paint.hex}
+            placeholder="#E8E2D6"
+            spellCheck={false}
+            aria-invalid={invalid}
+            onChange={(e) => setPaint({ ...paint, hex: e.target.value })}
+          />
+        </span>
+        {invalid && <span className="field-error">Un code couleur s’écrit avec 6 chiffres ou lettres, par exemple #E8E2D6.</span>}
       </label>
+      <div className="paint-palette">
+        <span>Ou choisissez dans la palette</span>
+        <div className="paint-palette-grid">
+          {PALETTE.map((c) => (
+            <button
+              key={c}
+              type="button"
+              className={`paint-palette-color${hex === c ? ' is-selected' : ''}`}
+              style={{ background: c }}
+              aria-label={c}
+              aria-pressed={hex === c}
+              onClick={() => setPaint({ ...paint, hex: c })}
+            />
+          ))}
+          <label className="button button-plain paint-palette-other">
+            Autre couleur…
+            <input type="color" value={hex ?? '#E8E2D6'} onChange={(e) => setPaint({ ...paint, hex: e.target.value.toUpperCase() })} />
+          </label>
+        </div>
+      </div>
+      {error && <p className="field-error inline-form-wide">{error}</p>}
       <div className="inline-form-actions">
+        {paint.id !== null && (
+          <button type="button" className="button button-danger inline-form-left" onClick={() => void remove()}>
+            Supprimer la teinte
+          </button>
+        )}
         <button type="button" className="button" onClick={() => onDone(null)}>
           Annuler
         </button>
-        <button type="submit" className="button button-primary" disabled={!paint.name.trim()}>
-          Ajouter
+        <button type="submit" className="button button-primary" disabled={!paint.name.trim() || invalid}>
+          {paint.id === null ? 'Ajouter' : 'Enregistrer'}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+// Nom de la marque et code promo, communs à toutes ses teintes.
+function BrandForm({ name, promoCode, onDone }: { name: string; promoCode: string | null; onDone(): void }) {
+  const [form, setForm] = useState({ name, promoCode: promoCode ?? '' })
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!form.name.trim()) return
+    await window.mdeko.projects.updatePaintBrand(name, { name: form.name, promoCode: form.promoCode || null })
+    onDone()
+  }
+  return (
+    <form className="inline-form" onSubmit={submit}>
+      <label className="field">
+        <span>Nom de la marque ou du magasin</span>
+        <input autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+      </label>
+      <label className="field">
+        <span>Code promo (facultatif)</span>
+        <input value={form.promoCode} onChange={(e) => setForm({ ...form, promoCode: e.target.value })} />
+      </label>
+      <div className="inline-form-actions">
+        <button type="button" className="button" onClick={onDone}>
+          Annuler
+        </button>
+        <button type="submit" className="button button-primary" disabled={!form.name.trim()}>
+          Enregistrer
         </button>
       </div>
     </form>

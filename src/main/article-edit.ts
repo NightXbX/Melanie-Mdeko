@@ -236,7 +236,7 @@ export interface EmptyTrashResult {
 export function emptyTrash(db: DatabaseSync, dataRoot: string, undo: UndoStack): EmptyTrashResult {
   const trashed = db.prepare('SELECT id FROM articles WHERE deleted_at IS NOT NULL').all() as { id: number }[]
   const used = new Set(
-    (db.prepare('SELECT DISTINCT article_id AS id FROM need_articles').all() as { id: number }[]).map((r) => r.id)
+    (db.prepare('SELECT article_id AS id FROM need_articles UNION SELECT article_id FROM render_markers').all() as { id: number }[]).map((r) => r.id)
   )
   const ids = trashed.map((r) => r.id).filter((id) => !used.has(id))
   inTransaction(db, () => {

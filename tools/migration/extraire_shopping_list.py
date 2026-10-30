@@ -188,8 +188,8 @@ def lire_teintes(page: pymupdf.Page, textes, img: Images) -> list[Teinte]:
     if "farrow" in contenu or "forrow" in contenu:
         marque = "Farrow & Ball"
     elif promo or "bilboquet" in contenu:
-        # Le logo Bilbo Quet Deco est une image ; son code promo pro, lui, est écrit sur la page.
-        marque = "Bilbo Quet Deco"
+        # Le logo Bilboquet Deco est une image ; son code promo pro, lui, est écrit sur la page.
+        marque = "Bilboquet Deco"
     else:
         marque = "Autre"
 

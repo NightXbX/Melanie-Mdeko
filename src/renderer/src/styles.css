@@ -2480,3 +2480,367 @@ img.pv {
   color: var(--text);
   text-align: center;
 }
+
+/* Teintes : modification, code couleur ou palette */
+
+.paint-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.paint-group-head h3 {
+  margin: 0;
+}
+
+.paint-group .inline-form {
+  margin-bottom: 12px;
+}
+
+.paint-toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+}
+
+.paint-swatch.is-empty,
+.paint-code-swatch.is-empty {
+  background: repeating-linear-gradient(135deg, #fff 0 6px, #eee 6px 12px);
+}
+
+.paint-edit {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--separator);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--text);
+}
+
+.paint:hover .paint-edit,
+.paint-edit:focus-visible {
+  display: flex;
+}
+
+.paint-code {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.paint-code input {
+  flex: 1;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.paint-code-swatch {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  border: 1px solid var(--separator);
+}
+
+.field-error {
+  font-size: 12px;
+  color: #d70015;
+}
+
+.paint-palette {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.paint-palette-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.paint-palette-color {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+}
+
+.paint-palette-color.is-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.paint-palette-other {
+  position: relative;
+  overflow: hidden;
+}
+
+.paint-palette-other input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.inline-form-wide {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.inline-form-left {
+  margin-right: auto;
+}
+
+/* Rendu en grand : remplacement de l'image et repères des objets */
+
+.render-open {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.render-markers {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.picker-heading {
+  margin: 4px 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.picker-heading + .grid {
+  margin-bottom: 18px;
+}
+
+.viewer {
+  width: calc(100vw - 60px);
+  height: calc(100vh - 100px);
+  max-height: none;
+}
+
+.viewer.is-dragging {
+  outline: 3px dashed var(--accent);
+  outline-offset: -8px;
+}
+
+.viewer-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.viewer-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 18px;
+}
+
+.viewer-stage-wrap {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* Le cadre épouse l'image : les repères sont placés en % de l'image. */
+.viewer-stage {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+}
+
+.viewer-stage img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 230px);
+  border-radius: 8px;
+  user-select: none;
+}
+
+.viewer-stage.is-marking {
+  cursor: crosshair;
+}
+
+.viewer-hint {
+  margin: 0;
+  text-align: center;
+}
+
+.marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #2b3840;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+  cursor: grab;
+  touch-action: none;
+}
+
+.marker.is-selected {
+  background: var(--accent);
+  z-index: 2;
+}
+
+.marker.is-pending {
+  background: var(--accent);
+  animation: marker-pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes marker-pulse {
+  to {
+    transform: translate(-50%, -50%) scale(1.25);
+  }
+}
+
+.marker-label {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.viewer-side {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.viewer-mark {
+  justify-content: center;
+}
+
+.marker-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.marker-list li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 10px;
+}
+
+.marker-list li.is-selected {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.marker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.marker-item .marker-number {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #2b3840;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.marker-photo {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.marker-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.marker-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}

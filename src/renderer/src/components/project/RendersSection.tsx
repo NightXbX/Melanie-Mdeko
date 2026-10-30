@@ -5,6 +5,7 @@ import { hasImages, readDrop, uploadDrop, type DropContent } from '../../lib/ima
 import { Icon } from '../Icon'
 import { AiSheet } from './AiSheet'
 import type { SectionProps } from './ProjectEditor'
+import { RenderViewer } from './RenderViewer'
 import { SectionHeader } from './sections'
 
 // Rendus HomeByMe : on les glisse ici, on les range dans l'ordre du book en les faisant glisser.
@@ -14,6 +15,7 @@ export function RendersSection({ project, reload }: SectionProps) {
   const [uploading, setUploading] = useState(false)
   const [moving, setMoving] = useState<number | null>(null)
   const [retouching, setRetouching] = useState<number | null>(null)
+  const [viewing, setViewing] = useState<number | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const insetFor = useRef<number | null>(null)
   const insetInput = useRef<HTMLInputElement>(null)
@@ -96,9 +98,16 @@ export function RendersSection({ project, reload }: SectionProps) {
               }}
             >
               <div className="render-image">
-                <img src={r.thumbnailUrl} alt="" draggable={false} />
+                <button type="button" className="render-open" aria-label={`Agrandir le rendu ${i + 1}`} onClick={() => setViewing(i)}>
+                  <img src={r.thumbnailUrl} alt="" draggable={false} />
+                </button>
                 <span className="render-number">{i + 1}</span>
                 {r.edited && <span className="render-edited">Retouché</span>}
+                {r.markers.length > 0 && (
+                  <span className="render-markers">
+                    {r.markers.length} objet{r.markers.length > 1 ? 's' : ''} repéré{r.markers.length > 1 ? 's' : ''}
+                  </span>
+                )}
                 <button type="button" className="editor-thumb-remove render-remove" aria-label="Retirer ce rendu" onClick={async () => {
                   await window.mdeko.projects.removeRender(r.id)
                   await reload()
@@ -137,6 +146,19 @@ export function RendersSection({ project, reload }: SectionProps) {
         </div>
       )}
 
+      {viewing !== null && (
+        <RenderViewer
+          project={project}
+          index={Math.min(viewing, project.renders.length - 1)}
+          onIndex={setViewing}
+          onRetouch={(id) => {
+            setViewing(null)
+            setRetouching(id)
+          }}
+          onClose={() => setViewing(null)}
+          reload={reload}
+        />
+      )}
       {retouching !== null && project.renders.some((r) => r.id === retouching) && (
         <AiSheet render={project.renders.find((r) => r.id === retouching)!} onClose={() => setRetouching(null)} onChanged={() => void reload()} />
       )}

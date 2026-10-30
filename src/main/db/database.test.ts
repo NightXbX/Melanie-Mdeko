@@ -25,6 +25,19 @@ describe('migrations', () => {
     ).toThrow()
   })
 
+  it('réunit les anciennes graphies de « Bilboquet Deco »', () => {
+    const db = openDatabase(':memory:')
+    migrate(db, MIGRATIONS.filter((m) => m.version <= 5))
+    db.exec(`INSERT INTO paint_brands (id, name, promo_code) VALUES (1, 'Bilbo Quet Deco', 'PRO'), (2, 'Farrow & Ball', NULL);
+             INSERT INTO paints (brand_id, name) VALUES (1, 'Marelle'), (2, 'Lin')`)
+    migrate(db)
+    const rows = db.prepare('SELECT b.name, b.promo_code, p.name AS paint FROM paints p JOIN paint_brands b ON b.id = p.brand_id ORDER BY p.name').all()
+    expect(rows).toEqual([
+      { name: 'Farrow & Ball', promo_code: null, paint: 'Lin' },
+      { name: 'Bilboquet Deco', promo_code: 'PRO', paint: 'Marelle' }
+    ])
+  })
+
   it('refuse une base créée par une version plus récente', () => {
     const db = openDatabase(':memory:')
     db.exec('PRAGMA user_version = 9999')

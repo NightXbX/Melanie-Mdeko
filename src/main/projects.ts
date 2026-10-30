@@ -141,6 +141,14 @@ function getRenders(db: DatabaseSync, projectId: number): ProjectRender[] {
        WHERE r.project_id = ? ORDER BY r.sort, r.id`
     )
     .all(projectId) as Row[]
+  const markers = db
+    .prepare(
+      `SELECT m.id AS marker_id, m.render_id, m.x, m.y, ${CARD_COLUMNS}
+       FROM render_markers m JOIN renders r ON r.id = m.render_id JOIN articles a ON a.id = m.article_id
+       LEFT JOIN suppliers s ON s.id = a.supplier_id
+       WHERE r.project_id = ? ORDER BY m.id`
+    )
+    .all(projectId) as Row[]
   return rows.map((r) => ({
     id: r.id as number,
     imageId: r.image_id as number,
@@ -149,8 +157,49 @@ function getRenders(db: DatabaseSync, projectId: number): ProjectRender[] {
     insetUrl: r.inset ? mediaUrl(r.inset as string) : null,
     section: r.section as RenderSection,
     caption: r.caption as string | null,
-    edited: r.version !== null
+    edited: r.version !== null,
+    markers: markers
+      .filter((m) => m.render_id === r.id)
+      .map((m) => ({ id: m.marker_id as number, x: m.x as number, y: m.y as number, article: toCard(m) }))
   }))
+}
+
+// Nouvelle image pour un rendu (rendu HomeByMe refait) : il garde sa place, sa vignette et ses repères.
+// La retouche IA portait sur l'ancienne image : on revient à la nouvelle image d'origine.
+export function replaceRenderImage(db: DatabaseSync, renderId: number, imageId: number): void {
+  db.prepare('UPDATE renders SET image_id = ?, active_version_id = NULL WHERE id = ?').run(imageId, renderId)
+  const r = db.prepare('SELECT project_id FROM renders WHERE id = ?').get(renderId) as { project_id: number } | undefined
+  if (r) touch(db, r.project_id)
+}
+
+// Repère d'un objet sur un rendu. Un article qui n'est pas encore dans le projet y devient un nouveau choix,
+// dans la pièce du rendu si on la connaît.
+export function addMarker(db: DatabaseSync, renderId: number, articleId: number, x: number, y: number): number {
+  const clamp = (v: number) => Math.min(1, Math.max(0, v))
+  const r = db.prepare('SELECT project_id, room_id FROM renders WHERE id = ?').get(renderId) as
+    | { project_id: number; room_id: number | null }
+    | undefined
+  if (!r) throw new Error('Ce rendu n’existe plus.')
+  const inProject = db
+    .prepare('SELECT 1 FROM need_articles na JOIN needs n ON n.id = na.need_id WHERE n.project_id = ? AND na.article_id = ?')
+    .get(r.project_id, articleId)
+  if (!inProject) addNeed(db, r.project_id, articleId, r.room_id)
+  const id = Number(
+    db.prepare('INSERT INTO render_markers (render_id, article_id, x, y) VALUES (?, ?, ?, ?)').run(renderId, articleId, clamp(x), clamp(y))
+      .lastInsertRowid
+  )
+  touch(db, r.project_id)
+  return id
+}
+
+export function moveMarker(db: DatabaseSync, markerId: number, x: number, y: number): void {
+  const clamp = (v: number) => Math.min(1, Math.max(0, v))
+  db.prepare('UPDATE render_markers SET x = ?, y = ? WHERE id = ?').run(clamp(x), clamp(y), markerId)
+}
+
+// Retirer un repère ne retire pas l'article de la shopping list du projet.
+export function removeMarker(db: DatabaseSync, markerId: number): void {
+  db.prepare('DELETE FROM render_markers WHERE id = ?').run(markerId)
 }
 
 export function addRenders(db: DatabaseSync, projectId: number, imageIds: number[], section: RenderSection): void {
@@ -361,15 +410,67 @@ export function listPaints(db: DatabaseSync): Paint[] {
   }))
 }
 
-export function createPaint(db: DatabaseSync, paint: Omit<Paint, 'id' | 'promoCode'>): number {
-  const brand = paint.brand.trim() || DEFAULT_PAINT_BRAND
+function brandId(db: DatabaseSync, name: string): number {
+  const brand = name.trim() || DEFAULT_PAINT_BRAND
   const found = db.prepare('SELECT id FROM paint_brands WHERE name = ?').get(brand) as { id: number } | undefined
-  const brandId = found?.id ?? Number(db.prepare('INSERT INTO paint_brands (name) VALUES (?)').run(brand).lastInsertRowid)
+  return found?.id ?? Number(db.prepare('INSERT INTO paint_brands (name) VALUES (?)').run(brand).lastInsertRowid)
+}
+
+// Code couleur écrit à la main : « #e8e2d6 », « E8E2D6 » ou « #abc ». Invalide ou vide : pas de couleur.
+export function normalizeHex(hex: string | null): string | null {
+  const v = hex?.trim().replace(/^#/, '') ?? ''
+  if (/^[0-9a-f]{3}$/i.test(v)) return `#${[...v].map((c) => c + c).join('')}`.toUpperCase()
+  return /^[0-9a-f]{6}$/i.test(v) ? `#${v}`.toUpperCase() : null
+}
+
+export function createPaint(db: DatabaseSync, paint: Omit<Paint, 'id' | 'promoCode'>): number {
+  if (!paint.name.trim()) throw new Error('Donnez un nom à la teinte.')
   return Number(
     db
       .prepare('INSERT INTO paints (brand_id, name, reference, hex) VALUES (?, ?, ?, ?)')
-      .run(brandId, paint.name.trim(), paint.reference?.trim() || null, paint.hex).lastInsertRowid
+      .run(brandId(db, paint.brand), paint.name.trim(), paint.reference?.trim() || null, normalizeHex(paint.hex)).lastInsertRowid
   )
+}
+
+export function updatePaint(db: DatabaseSync, id: number, paint: Omit<Paint, 'id' | 'promoCode'>): void {
+  if (!paint.name.trim()) throw new Error('Donnez un nom à la teinte.')
+  db.prepare('UPDATE paints SET brand_id = ?, name = ?, reference = ?, hex = ? WHERE id = ?').run(
+    brandId(db, paint.brand),
+    paint.name.trim(),
+    paint.reference?.trim() || null,
+    normalizeHex(paint.hex),
+    id
+  )
+}
+
+// La teinte disparaît aussi des projets où elle figurait (l'interface le demande avant).
+export function deletePaint(db: DatabaseSync, id: number): void {
+  db.prepare('DELETE FROM project_paints WHERE paint_id = ?').run(id)
+  db.prepare('DELETE FROM paints WHERE id = ?').run(id)
+}
+
+export function countPaintProjects(db: DatabaseSync, id: number): number {
+  return (
+    db
+      .prepare('SELECT count(*) AS n FROM project_paints pp JOIN projects p ON p.id = pp.project_id WHERE pp.paint_id = ? AND p.deleted_at IS NULL')
+      .get(id) as { n: number }
+  ).n
+}
+
+// Renommer une marque (et son code promo) ; un nom déjà pris réunit les deux marques.
+export function updatePaintBrand(db: DatabaseSync, from: string, to: { name: string; promoCode: string | null }): void {
+  const old = db.prepare('SELECT id, promo_code FROM paint_brands WHERE name = ?').get(from) as { id: number; promo_code: string | null } | undefined
+  if (!old) return
+  const name = to.name.trim() || DEFAULT_PAINT_BRAND
+  const promo = to.promoCode?.trim() || null
+  const target = db.prepare('SELECT id FROM paint_brands WHERE name = ? AND id <> ?').get(name, old.id) as { id: number } | undefined
+  if (target) {
+    db.prepare('UPDATE paints SET brand_id = ? WHERE brand_id = ?').run(target.id, old.id)
+    db.prepare('UPDATE paint_brands SET promo_code = coalesce(?, promo_code) WHERE id = ?').run(promo, target.id)
+    db.prepare('DELETE FROM paint_brands WHERE id = ?').run(old.id)
+  } else {
+    db.prepare('UPDATE paint_brands SET name = ?, promo_code = ? WHERE id = ?').run(name, promo, old.id)
+  }
 }
 
 export function listArtisans(db: DatabaseSync): Artisan[] {
