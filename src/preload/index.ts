@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
-import { AI_METHODS, IPC, PROJECT_METHODS, type AiApi, type LinkCheckProgress, type MdekoApi, type MenuCommand, type ProjectsApi, type UpdateInfo } from '@shared/api'
+import { AI_METHODS, HOMEBYME_METHODS, IPC, PROJECT_METHODS, type AiApi, type HomeByMeApi, type LinkCheckProgress, type MdekoApi, type MenuCommand, type ProjectsApi, type UpdateInfo } from '@shared/api'
 
 const projects = Object.fromEntries(
   PROJECT_METHODS.map((method) => [method, (...args: unknown[]) => ipcRenderer.invoke(IPC.projects, method, ...args)])
@@ -7,9 +7,14 @@ const projects = Object.fromEntries(
 
 const ai = Object.fromEntries(AI_METHODS.map((method) => [method, (...args: unknown[]) => ipcRenderer.invoke(IPC.ai, method, ...args)])) as unknown as AiApi
 
+const homebyme = Object.fromEntries(
+  HOMEBYME_METHODS.map((method) => [method, (...args: unknown[]) => ipcRenderer.invoke(IPC.homebyme, method, ...args)])
+) as unknown as HomeByMeApi
+
 const api: MdekoApi = {
   projects,
   ai,
+  homebyme,
   getAppInfo: () => ipcRenderer.invoke(IPC.getAppInfo),
   openDataFolder: () => ipcRenderer.invoke(IPC.openDataFolder),
   backupNow: () => ipcRenderer.invoke(IPC.backupNow),

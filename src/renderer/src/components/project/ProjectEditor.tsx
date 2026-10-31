@@ -6,11 +6,12 @@ import { Icon } from '../Icon'
 import { BookPreview } from './BookPreview'
 import { NeedsSection } from './NeedsSection'
 import { RendersSection } from './RendersSection'
+import { SendSection } from './SendSection'
 import { Slideshow } from './Slideshow'
 import { TrendSection } from './TrendSection'
 import { ArtisansSection, ClientSection, PaintsSection, TextsSection, WishesSection } from './sections'
 
-type Step = 'client' | 'trend' | 'wishes' | 'renders' | 'needs' | 'paints' | 'artisans' | 'texts'
+type Step = 'client' | 'trend' | 'wishes' | 'renders' | 'needs' | 'paints' | 'artisans' | 'texts' | 'send'
 
 export interface SectionProps {
   project: Project
@@ -78,7 +79,8 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
     { id: 'needs', label: 'Shopping list', count: project.needs.length },
     { id: 'paints', label: 'Teintes et couleurs', count: project.paintIds.length },
     { id: 'artisans', label: 'Artisans', count: project.artisanIds.length },
-    { id: 'texts', label: 'Textes' }
+    { id: 'texts', label: 'Textes' },
+    { id: 'send', label: 'Envoyer au client' }
   ]
   const props: SectionProps = { project, settings, reload }
 
@@ -151,6 +153,7 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
           {step === 'paints' && <PaintsSection {...props} />}
           {step === 'artisans' && <ArtisansSection {...props} />}
           {step === 'texts' && <TextsSection {...props} />}
+          {step === 'send' && <SendSection {...props} />}
         </div>
         {preview && <BookPreview projectId={projectId} version={project} onChanged={() => void reload()} />}
       </div>

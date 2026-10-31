@@ -7,6 +7,7 @@ import { moved, useSortable } from '../../lib/sortable'
 import { ArticleEditorSheet } from '../ArticleEditorSheet'
 import { Icon } from '../Icon'
 import { ArticlePicker } from './ArticlePicker'
+import { HomeByMeImport } from './HomeByMeImport'
 import type { SectionProps } from './ProjectEditor'
 import { SectionHeader } from './sections'
 
@@ -36,6 +37,7 @@ const zoneOf = (roomId: number | null) => (roomId === null ? 'sans-piece' : Stri
 export function NeedsSection({ project, reload }: SectionProps) {
   const [picking, setPicking] = useState<Picking | null>(null)
   const [editing, setEditing] = useState<Editing>(null)
+  const [importing, setImporting] = useState(false)
 
   const run = async (action: Promise<unknown>) => {
     await action
@@ -100,6 +102,9 @@ export function NeedsSection({ project, reload }: SectionProps) {
   return (
     <div className="section">
       <SectionHeader title="Shopping list">
+        <button type="button" className="button" onClick={() => setImporting(true)}>
+          Importer depuis HomeByMe
+        </button>
         <button type="button" className="button" onClick={() => setEditing({ articleId: null, then: { mode: 'add', roomId: null } })}>
           <Icon name="plus" size={14} />
           Nouvel article
@@ -181,6 +186,7 @@ export function NeedsSection({ project, reload }: SectionProps) {
           onCancel={() => setPicking(null)}
         />
       )}
+      {importing && <HomeByMeImport project={project} onClose={() => setImporting(false)} onDone={reload} />}
       {editing && (
         <ArticleEditorSheet
           articleId={editing.articleId}

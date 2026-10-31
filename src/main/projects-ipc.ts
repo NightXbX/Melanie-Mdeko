@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { BrowserWindow, ipcMain, shell } from 'electron'
 import { IPC, PROJECT_METHODS, type ProjectsApi } from '@shared/api'
 import { bookPages, exportBook, projectFolder } from './book/export'
+import { prepareMail } from './mail'
 import type { DataPaths } from './paths'
 import * as p from './projects'
 
@@ -51,6 +52,7 @@ export function registerProjectsIpc(db: DatabaseSync, paths: DataPaths): void {
     resetPage: (_w, id, pageKey) => p.resetPageAdjustments(db, id, pageKey),
     deleteNote: (_w, noteId) => p.deleteNote(db, noteId),
     export: (w, id, format) => exportBook(db, paths, id, format, w),
+    prepareMail: (_w, id, mail) => prepareMail(db, paths, id, mail),
     openFolder: async (_w, id) => {
       await shell.openPath(projectFolder(db, paths, id))
     }

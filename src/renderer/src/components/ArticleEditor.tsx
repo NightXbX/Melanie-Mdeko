@@ -35,11 +35,12 @@ const EMPTY: ArticleInput = {
 interface Props {
   articleId: number | null
   initialDrop?: DropContent
+  initial?: Partial<ArticleInput> // nouvel article prérempli (objet importé de HomeByMe, par exemple)
   onClose(savedId?: number): void
 }
 
-export function ArticleEditor({ articleId, initialDrop, onClose }: Props) {
-  const [form, setForm] = useState<ArticleInput | null>(articleId === null ? EMPTY : null)
+export function ArticleEditor({ articleId, initialDrop, initial, onClose }: Props) {
+  const [form, setForm] = useState<ArticleInput | null>(articleId === null ? { ...EMPTY, ...initial } : null)
   const [priceText, setPriceText] = useState('')
   const [choices, setChoices] = useState<EditorChoices | null>(null)
   const [tagDraft, setTagDraft] = useState('')

@@ -94,6 +94,8 @@ export interface Project {
   showPrices: boolean // prix affichés dans le design book
   groupSingleChoices: boolean // choix sans autre proposition regroupés sur une même page
   trendImages: { id: number; url: string }[] // planche tendance (aucune photo : pas de planche)
+  homebymeUrl: string | null // dernier lien HomeByMe importé
+  mailedAt: string | null // dernier mail préparé pour envoyer le book
 }
 
 export type ProjectPatch = Partial<
@@ -110,6 +112,32 @@ export interface DesignerSettings {
   introText: string
   wishesText: string // « {pieces} » est remplacé par les pièces du projet
   closingText: string
+  mailSubject: string // mail type pour envoyer le book : {client}, {mois} et {signature} sont remplacés
+  mailBody: string
+}
+
+export const DEFAULT_MAIL_SUBJECT = 'Votre design book – {client}'
+export const DEFAULT_MAIL_BODY =
+  'Bonjour {client},\n\nVous trouverez ci-joint votre design book ({mois}).\n\nJe reste à votre disposition pour en parler ou pour toute modification.\n\nBelle journée,\n{signature}'
+
+// Mail type rempli pour un projet.
+export function fillMail(template: string, values: { client: string; mois: string; signature: string }): string {
+  return template.replaceAll('{client}', values.client).replaceAll('{mois}', values.mois).replaceAll('{signature}', values.signature)
+}
+
+// « a@x.fr; b@y.fr » → « a@x.fr,b@y.fr » (les adresses mal écrites sont laissées de côté).
+export const mailAddresses = (to: string) =>
+  to
+    .split(/[,;\s]+/)
+    .filter((a) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a))
+    .join(',')
+
+// Mail préparé dans l'étape « Envoyer au client ».
+export interface MailRequest {
+  to: string
+  subject: string
+  body: string
+  formats: BookFormat[]
 }
 
 export type BookFormat = 'pdf' | 'pptx'

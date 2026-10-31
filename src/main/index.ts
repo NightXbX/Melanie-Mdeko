@@ -7,6 +7,7 @@ import { AutoBackup, createBackup, ensureDailyBackup } from './backup'
 import { migrate, openDatabase, pendingMigrations, schemaVersion } from './db/database'
 import { registerIpc } from './ipc'
 import { registerAiIpc } from './ai'
+import { registerHomeByMeIpc } from './homebyme'
 import { registerProjectsIpc } from './projects-ipc'
 import { handleMedia, registerMediaScheme } from './media'
 import { attachContextMenu } from './context-menu'
@@ -62,6 +63,7 @@ function start(): void {
   registerIpc(db, paths, backupNow)
   registerProjectsIpc(db, paths)
   registerAiIpc(db, paths)
+  registerHomeByMeIpc(db)
   registerUpdates(db, paths)
   buildMenu({
     backupNow: () => backupNow(),

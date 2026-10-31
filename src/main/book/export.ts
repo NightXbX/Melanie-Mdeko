@@ -50,6 +50,31 @@ async function renderPdf(html: string): Promise<Buffer> {
 
 const LAST_FOLDER = 'last_export_dir'
 
+const today = () => {
+  const d = new Date()
+  return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`
+}
+
+// « Design book Mme Durand (31-10-2026).pdf », numéroté s'il existe déjà : on n'écrase jamais un fichier.
+function freeName(folder: string, clientLabel: string, format: BookFormat): string {
+  const base = safeName(`Design book ${clientLabel} (${today()})`)
+  let file = join(folder, `${base}.${format}`)
+  for (let i = 2; existsSync(file); i++) file = join(folder, `${base} ${i}.${format}`)
+  return file
+}
+
+async function bookContent(pages: Page[], format: BookFormat, clientLabel: string): Promise<Buffer> {
+  return format === 'pdf' ? renderPdf(bookHtml(pages)) : bookPptx(pages, `Design book ${clientLabel}`)
+}
+
+// Book créé dans le dossier du projet (pièce jointe d'un mail, par exemple), sans rien demander.
+export async function saveBookInProject(db: DatabaseSync, paths: DataPaths, projectId: number, format: BookFormat): Promise<string> {
+  const data = bookData(db, paths.root, projectId)
+  const file = freeName(projectFolder(db, paths, projectId), data.clientLabel, format)
+  writeFileSync(file, await bookContent(buildBook(data), format, data.clientLabel))
+  return file
+}
+
 // Dossier proposé : celui du dernier enregistrement (son cloud, par exemple), sinon le dossier du projet.
 function suggestedFolder(db: DatabaseSync, paths: DataPaths, projectId: number): string {
   const last = (db.prepare('SELECT value FROM settings WHERE key = ?').get(LAST_FOLDER) as { value: string } | undefined)?.value
@@ -71,12 +96,7 @@ export async function exportBook(
   win: BrowserWindow | null
 ): Promise<string | null> {
   const data = bookData(db, paths.root, projectId)
-  const folder = suggestedFolder(db, paths, projectId)
-  const d = new Date()
-  const date = `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`
-  const base = safeName(`Design book ${data.clientLabel} (${date})`)
-  let suggested = join(folder, `${base}.${format}`)
-  for (let i = 2; existsSync(suggested); i++) suggested = join(folder, `${base} ${i}.${format}`)
+  const suggested = freeName(suggestedFolder(db, paths, projectId), data.clientLabel, format)
 
   const options = {
     title: format === 'pdf' ? 'Enregistrer le design book en PDF' : 'Enregistrer le design book en PowerPoint',
@@ -89,9 +109,7 @@ export async function exportBook(
   if (result.canceled || !result.filePath) return null
   const file = /\.(pdf|pptx)$/i.test(result.filePath) ? result.filePath : `${result.filePath}.${format}`
 
-  const pages = buildBook(data)
-  const content = format === 'pdf' ? await renderPdf(bookHtml(pages)) : await bookPptx(pages, `Design book ${data.clientLabel}`)
-  writeFileSync(file, content)
+  writeFileSync(file, await bookContent(buildBook(data), format, data.clientLabel))
   db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value').run(LAST_FOLDER, dirname(file))
   shell.showItemInFolder(file)
   return file

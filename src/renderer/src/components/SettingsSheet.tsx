@@ -57,7 +57,7 @@ export function SettingsSheet({ onClose }: { onClose(): void }) {
       <input value={s[key]} onChange={(e) => setS({ ...s, [key]: e.target.value })} />
     </label>
   )
-  const area = (key: 'introText' | 'wishesText' | 'closingText', label: string) => (
+  const area = (key: 'introText' | 'wishesText' | 'closingText' | 'mailBody', label: string) => (
     <label className="field">
       <span>{label}</span>
       <textarea rows={6} value={s[key]} onChange={(e) => setS({ ...s, [key]: e.target.value })} />
@@ -188,6 +188,16 @@ export function SettingsSheet({ onClose }: { onClose(): void }) {
           {area('introText', 'Avant-propos')}
           {area('wishesText', 'Vos envies — « {pieces} » est remplacé par les pièces du projet')}
           {area('closingText', 'C’est à vous !')}
+
+          <h3>Mail type pour envoyer le design book</h3>
+          <p className="section-note">
+            « {'{client}'} » est remplacé par le nom du client, « {'{mois}'} » par le mois du design book, « {'{signature}'} » par votre nom.
+          </p>
+          <label className="field">
+            <span>Objet</span>
+            <input value={s.mailSubject} onChange={(e) => setS({ ...s, mailSubject: e.target.value })} />
+          </label>
+          {area('mailBody', 'Message')}
         </div>
       </form>
     </div>

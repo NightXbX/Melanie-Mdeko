@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import type { AiProposal, AiStatus, AiVersion, EditableImage } from '@shared/api'
+import type { AiMark, AiProposal, AiStatus, AiVersion, EditableImage } from '@shared/api'
 import type { ProjectRender } from '@shared/projects'
-import { useApp } from '../../app-context'
+import { useApp, useUndoHandler } from '../../app-context'
 import { hasImages, readDrop, uploadDrop } from '../../lib/images'
+import { isMove } from '../../lib/sortable'
 import { Icon } from '../Icon'
 import { ArticlePicker } from './ArticlePicker'
+import { MarkupLayer, strokesToPng, type Stroke } from './MarkupLayer'
+
+const RENDER_MARKS_WIDTH = 2048
+const REFERENCE_MARKS_WIDTH = 1024
 
 const IDEAS = [
   'Ajoute des lumières chaudes et douces',
@@ -29,7 +34,23 @@ export function AiSheet({ render, onClose, onChanged }: { render: ProjectRender;
   const [proposals, setProposals] = useState<AiProposal[] | null>(null)
   const [compared, setCompared] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [dropping, setDropping] = useState(false)
+  // Traits rouges pour préciser la demande : sur le rendu (« render ») et sur chaque image de référence (son id).
+  const [marks, setMarks] = useState<Record<string, Stroke[]>>({})
+  const [drawing, setDrawing] = useState(false)
+  const [markingRef, setMarkingRef] = useState<EditableImage | null>(null)
+  const ratios = useRef<Record<string, number>>({}) // hauteur / largeur de chaque image annotée
   const fileInput = useRef<HTMLInputElement>(null)
+  const stageImage = useRef<HTMLImageElement>(null)
+
+  const setStrokes = (key: string, strokes: Stroke[]) => setMarks((m) => ({ ...m, [key]: strokes }))
+  // ⌘Z retire le dernier trait de l'image qu'on est en train d'annoter.
+  const markingKey = markingRef ? String(markingRef.id) : drawing ? 'render' : null
+  useUndoHandler(() => {
+    if (!markingKey || !marks[markingKey]?.length) return false
+    setStrokes(markingKey, marks[markingKey].slice(0, -1))
+    return true
+  }, markingKey !== null)
 
   const current = history.find((v) => v.active) ?? history[0]
 
@@ -53,7 +74,14 @@ export function AiSheet({ render, onClose, onChanged }: { render: ProjectRender;
     setRunning(true)
     setProposals(null)
     try {
-      const result = await window.mdeko.ai.edit(render.id, prompt, refs.map((r) => r.id))
+      const marked: AiMark[] = []
+      for (const [key, strokes] of Object.entries(marks)) {
+        if (!strokes.length || (key !== 'render' && !refs.some((r) => String(r.id) === key))) continue
+        const width = key === 'render' ? RENDER_MARKS_WIDTH : REFERENCE_MARKS_WIDTH
+        marked.push({ target: key === 'render' ? 'render' : Number(key), overlay: await strokesToPng(strokes, width, ratios.current[key] ?? 9 / 16) })
+      }
+      setDrawing(false)
+      const result = await window.mdeko.ai.edit(render.id, prompt, refs.map((r) => r.id), marked)
       setProposals(result)
       setCompared(Math.max(0, result.findIndex((p) => p.imageUrl)))
       if (result.every((p) => p.error)) setError(result[0].error)
@@ -88,11 +116,23 @@ export function AiSheet({ render, onClose, onChanged }: { render: ProjectRender;
     <div
       className="sheet-backdrop"
       onMouseDown={(e) => e.target === e.currentTarget && !running && onClose()}
-      // Une image lâchée ici ne doit pas devenir un nouveau rendu du projet (zone de dépôt en dessous).
-      onDragOver={(e) => e.stopPropagation()}
+      // Une image lâchée n'importe où ici devient une image de référence (et jamais un nouveau rendu du projet).
+      onDragOver={(e) => {
+        e.stopPropagation()
+        if (isMove(e) || !hasImages(e.dataTransfer)) return
+        e.preventDefault()
+        if (!running && !proposals) setDropping(true)
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropping(false)
+      }}
       onDrop={(e) => {
         e.preventDefault()
         e.stopPropagation()
+        setDropping(false)
+        if (running || proposals || isMove(e)) return
+        const d = readDrop(e.dataTransfer)
+        if (d.files.length || d.url) void addRefs(d.files, d.url)
       }}
     >
       <div className="sheet sheet-large ai-sheet" onKeyDown={(e) => e.key === 'Escape' && !running && !picking && onClose()}>
@@ -115,7 +155,25 @@ export function AiSheet({ render, onClose, onChanged }: { render: ProjectRender;
             {shown?.imageUrl && current ? (
               <BeforeAfter before={current.imageUrl} after={shown.imageUrl} />
             ) : (
-              current && <img className="ai-image" src={current.imageUrl} alt="" />
+              current && (
+                <>
+                  <img
+                    ref={stageImage}
+                    className="ai-image"
+                    src={current.imageUrl}
+                    alt=""
+                    draggable={false}
+                    onLoad={(e) => (ratios.current.render = e.currentTarget.naturalHeight / e.currentTarget.naturalWidth)}
+                  />
+                  <MarkupLayer image={stageImage} strokes={marks.render ?? []} active={drawing && !running} onChange={(s) => setStrokes('render', s)} />
+                </>
+              )
+            )}
+            {dropping && (
+              <div className="drop-overlay">
+                <Icon name="photo" size={40} />
+                <p>Déposez l’image : elle servira d’image de référence</p>
+              </div>
             )}
             {running && (
               <div className="ai-running">
@@ -163,6 +221,18 @@ export function AiSheet({ render, onClose, onChanged }: { render: ProjectRender;
               </>
             ) : (
               <>
+                <div className="ai-markup-tools">
+                  <button type="button" className={`button${drawing ? ' is-active' : ''}`} disabled={running} onClick={() => setDrawing(!drawing)}>
+                    <Icon name="pencil" size={13} />
+                    {drawing ? 'Terminer' : 'Entourer sur le rendu'}
+                  </button>
+                  {(marks.render?.length ?? 0) > 0 && (
+                    <button type="button" className="button button-plain" disabled={running} onClick={() => setStrokes('render', [])}>
+                      Effacer les traits
+                    </button>
+                  )}
+                </div>
+                {drawing && <p className="section-note">Entourez ou soulignez sur l’image ce que l’IA doit changer, ou l’endroit où ajouter un objet.</p>}
                 <label className="field">
                   <span>Que voulez-vous changer ?</span>
                   <textarea
@@ -182,20 +252,15 @@ export function AiSheet({ render, onClose, onChanged }: { render: ProjectRender;
                   ))}
                 </div>
 
-                <div
-                  className="field ai-refs"
-                  onDragOver={(e) => hasImages(e.dataTransfer) && e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault()
-                    const d = readDrop(e.dataTransfer)
-                    void addRefs(d.files, d.url)
-                  }}
-                >
-                  <span>Images de référence (un meuble à ajouter…)</span>
+                <div className="field ai-refs">
+                  <span>Images de référence (un meuble à ajouter…) : glissez-les n’importe où dans cette fenêtre</span>
                   <div className="ai-refs-list">
                     {refs.map((r) => (
                       <div key={r.id} className="detail-thumb editor-thumb">
-                        <img src={r.url} alt="" />
+                        <button type="button" className="editor-thumb-main" title="Entourer sur cette image" onClick={() => setMarkingRef(r)}>
+                          <img src={r.url} alt="" draggable={false} />
+                        </button>
+                        {(marks[String(r.id)]?.length ?? 0) > 0 && <span className="ai-ref-marked" />}
                         <button type="button" className="editor-thumb-remove" aria-label="Retirer l’image" onClick={() => setRefs(refs.filter((x) => x.id !== r.id))}>
                           <Icon name="xmark" size={10} />
                         </button>
@@ -264,6 +329,31 @@ export function AiSheet({ render, onClose, onChanged }: { render: ProjectRender;
             e.target.value = ''
           }}
         />
+        {markingRef && (
+          <div className="sheet-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setMarkingRef(null)}>
+            <div className="sheet sheet-large ai-ref-markup" onKeyDown={(e) => e.key === 'Escape' && setMarkingRef(null)}>
+              <div className="sheet-head">
+                <h2>Entourez le produit à utiliser</h2>
+                <div className="sheet-actions">
+                  {(marks[String(markingRef.id)]?.length ?? 0) > 0 && (
+                    <button type="button" className="button button-plain" onClick={() => setStrokes(String(markingRef.id), [])}>
+                      Effacer les traits
+                    </button>
+                  )}
+                  <button type="button" className="button button-primary" onClick={() => setMarkingRef(null)}>
+                    Terminé
+                  </button>
+                </div>
+              </div>
+              <RefMarkup
+                image={markingRef}
+                strokes={marks[String(markingRef.id)] ?? []}
+                onRatio={(r) => (ratios.current[String(markingRef.id)] = r)}
+                onChange={(st) => setStrokes(String(markingRef.id), st)}
+              />
+            </div>
+          </div>
+        )}
         {picking && (
           <ArticlePicker
             title="Choisir l’article à ajouter dans le rendu"
@@ -278,6 +368,24 @@ export function AiSheet({ render, onClose, onChanged }: { render: ProjectRender;
           />
         )}
       </div>
+    </div>
+  )
+}
+
+// Image de référence en grand, pour y entourer le produit à reprendre (une photo avec plusieurs meubles).
+function RefMarkup({ image, strokes, onRatio, onChange }: { image: EditableImage; strokes: Stroke[]; onRatio(r: number): void; onChange(s: Stroke[]): void }) {
+  const img = useRef<HTMLImageElement>(null)
+  return (
+    <div className="ai-stage ai-ref-stage">
+      <img
+        ref={img}
+        className="ai-image"
+        src={image.url}
+        alt=""
+        draggable={false}
+        onLoad={(e) => onRatio(e.currentTarget.naturalHeight / e.currentTarget.naturalWidth)}
+      />
+      <MarkupLayer image={img} strokes={strokes} active onChange={onChange} />
     </div>
   )
 }

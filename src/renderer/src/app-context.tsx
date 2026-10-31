@@ -16,6 +16,22 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null)
 
+// Écrans qui ont leur propre ⌘Z (retirer le dernier trait dessiné, par exemple) : le plus récent passe en premier.
+const undoHandlers: (() => boolean)[] = []
+
+export function useUndoHandler(handler: () => boolean, enabled = true): void {
+  const ref = useRef(handler)
+  ref.current = handler
+  useEffect(() => {
+    if (!enabled) return
+    const fn = () => ref.current()
+    undoHandlers.push(fn)
+    return () => {
+      undoHandlers.splice(undoHandlers.indexOf(fn), 1)
+    }
+  }, [enabled])
+}
+
 export function useApp(): AppContextValue {
   const value = useContext(AppContext)
   if (!value) throw new Error('useApp doit être utilisé dans AppProvider')
@@ -56,7 +72,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       window.mdeko.onMenu((command) => {
         if (command !== 'undo') return
         if (isEditable(document.activeElement)) document.execCommand('undo')
-        else void undo()
+        else if (!undoHandlers.at(-1)?.()) void undo()
       }),
     [undo]
   )

@@ -1,10 +1,11 @@
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { ipcMain, nativeImage, net, safeStorage } from 'electron'
-import { AI_METHODS, IPC, type AiApi, type AiProposal } from '@shared/api'
+import { AI_METHODS, IPC, type AiApi, type AiMark, type AiProposal } from '@shared/api'
 import { uploadImage } from '../article-edit'
 import type { DataPaths } from '../paths'
-import instructions from './instructions-v1.txt?raw'
+import instructions from './instructions-v2.txt?raw'
+import { overlay } from './markup'
 import { listImageModels, openRouterProvider, type Fetch } from './openrouter'
 import {
   addProposal,
@@ -50,14 +51,38 @@ export function registerAiIpc(db: DatabaseSync, paths: DataPaths): void {
     return key
   }
 
-  // Image de la base en JPEG, réduite, prête à être envoyée.
-  const dataUrl = (imageId: number, width: number): string => {
+  // Image de la base en JPEG, réduite, prête à être envoyée ; avec les traits de Mélanie par-dessus s'il y en a.
+  const dataUrl = (imageId: number, width: number, marks?: Uint8Array): string => {
     const row = db.prepare('SELECT rel_path FROM images WHERE id = ?').get(imageId) as { rel_path: string } | undefined
     if (!row) throw new Error('Image introuvable.')
     let img = nativeImage.createFromPath(join(paths.root, row.rel_path))
     if (img.isEmpty()) throw new Error('Cette image ne peut pas être lue.')
     if (img.getSize().width > width) img = img.resize({ width, quality: 'best' })
+    if (marks) {
+      const size = img.getSize()
+      const layer = nativeImage.createFromBuffer(Buffer.from(marks)).resize({ width: size.width, height: size.height, quality: 'best' })
+      const data = overlay({ ...size, data: img.toBitmap() }, { ...size, data: layer.toBitmap() })
+      img = nativeImage.createFromBitmap(Buffer.from(data), size)
+    }
     return `data:image/jpeg;base64,${img.toJPEG(90).toString('base64')}`
+  }
+
+  // Images envoyées et leur description pour le moteur : le rendu (toujours propre), les références (avec leurs
+  // traits éventuels), puis une copie du rendu avec les traits de Mélanie.
+  const requestImages = (renderImageId: number, referenceImageIds: number[], marks: AiMark[]) => {
+    const markOf = (target: AiMark['target']) => marks.find((m) => m.target === target)?.overlay
+    const images = [dataUrl(renderImageId, RENDER_WIDTH)]
+    const lines = ['Image 1 is the render to edit.']
+    referenceImageIds.forEach((id) => {
+      images.push(dataUrl(id, REFERENCE_WIDTH, markOf(id)))
+      lines.push(`Image ${images.length} is a reference product${markOf(id) ? ': the product to use is the one marked in red' : ''}.`)
+    })
+    const onRender = markOf('render')
+    if (onRender) {
+      images.push(dataUrl(renderImageId, RENDER_WIDTH, onRender))
+      lines.push(`Image ${images.length} is a copy of image 1 with red marks drawn by the designer: they show where or what the request is about. Edit image 1, never image ${images.length}.`)
+    }
+    return { images, description: lines.join('\n') }
   }
 
   // Image reçue : enregistrée comme les autres photos (fichier, miniature, une seule copie par contenu).
@@ -99,7 +124,7 @@ export function registerAiIpc(db: DatabaseSync, paths: DataPaths): void {
     listModels: async () => listImageModels(requireKey(), fetchJson),
 
     // Une demande = une proposition par moteur, en même temps ; l'ordre est tiré au sort (duel à l'aveugle).
-    edit: async (renderId, prompt, referenceImageIds) => {
+    edit: async (renderId, prompt, referenceImageIds, marks = []) => {
       if (running) throw new Error('Une retouche est déjà en cours.')
       const text = prompt.trim()
       if (!text) throw new Error('Écrivez ce que vous voulez changer.')
@@ -110,8 +135,8 @@ export function registerAiIpc(db: DatabaseSync, paths: DataPaths): void {
         throw new Error(`Le plafond de ${(capCents / 100).toLocaleString('fr-FR')} $ de ce mois est atteint. Il peut être relevé dans les Réglages.`)
       }
       const source = currentImage(db, renderId)
-      const images = [dataUrl(source.imageId, RENDER_WIDTH), ...referenceImageIds.map((id) => dataUrl(id, REFERENCE_WIDTH))]
-      const full = `${instructions}\nRequest from the interior designer (in French):\n${text}`
+      const { images, description } = requestImages(source.imageId, referenceImageIds, marks)
+      const full = `${instructions}\n${description}\nRequest from the interior designer (in French):\n${text}`
       const provider = openRouterProvider(key, fetchJson)
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), TIMEOUT)

@@ -25,6 +25,8 @@ mac:
   extendInfo:
     CFBundleDevelopmentRegion: fr
     LSHasLocalizedDisplayName: false
+    # Question posée par macOS la première fois que Mdeko prépare un mail dans Mail.
+    NSAppleEventsUsageDescription: Mdeko prépare dans Mail le message pour votre client, avec le design book en pièce jointe.
 dmg:
   title: Mdeko
 # Version Windows : pour que le développeur teste l'appli sur son PC (non signée, comme sur Mac).

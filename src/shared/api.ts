@@ -4,6 +4,7 @@ import type {
   Artisan,
   BookFormat,
   DesignerSettings,
+  MailRequest,
   Paint,
   Project,
   ProjectPatch,
@@ -132,8 +133,47 @@ export interface ProjectsApi {
   resetPage(id: number, pageKey: string): Promise<void>
   deleteNote(noteId: number): Promise<void>
   export(id: number, format: BookFormat): Promise<string | null> // null : enregistrement annulé
+  // Crée le book (rangé dans le dossier du projet) et prépare le mail dans Mail ; renvoie les fichiers joints.
+  prepareMail(id: number, mail: MailRequest): Promise<{ files: string[]; inMail: boolean }>
   openFolder(id: number): Promise<void>
 }
+
+// --- Import depuis HomeByMe ---
+
+// Objet d'un projet HomeByMe : produit du catalogue HomeByMe ou objet du contenu communautaire.
+export interface HbmObject {
+  key: string // « product:<id> » ou « community:<id> »
+  kind: 'product' | 'community'
+  name: string
+  brand: string | null
+  url: string | null // page du produit chez le vendeur
+  description: string | null
+  imageUrl: string | null
+  size: string | null // « 200 × 90 × 75 cm »
+  rooms: { name: string | null; count: number }[] // pièce HomeByMe (null : pièce sans nom) et nombre posé
+}
+
+export interface HbmPreviewObject extends HbmObject {
+  article: ArticleCard | null // article de la shopping list déjà associé (mémorisé, ou même lien)
+  remembered: boolean // association retenue lors d'un import précédent
+  ignored: boolean // écarté lors d'un import précédent
+  suggestions: ArticleCard[] // articles au nom proche (objets de la communauté)
+}
+
+export interface HbmPreview {
+  title: string
+  objects: HbmPreviewObject[]
+}
+
+export interface HomeByMeApi {
+  read(projectId: number, url: string): Promise<HbmPreview>
+  // Retient le choix de Mélanie pour cet objet HomeByMe, pour les prochains projets.
+  remember(key: string, articleId: number | null, ignored: boolean): Promise<void>
+  // Catégorie probable d'un nouvel article, d'après les articles de la shopping list au nom proche.
+  guessCategory(name: string): Promise<number | null>
+}
+
+export const HOMEBYME_METHODS = ['read', 'remember', 'guessCategory'] as const satisfies readonly (keyof HomeByMeApi)[]
 
 // --- Assistant IA (retouche des rendus) ---
 
@@ -167,12 +207,18 @@ export interface AiVersion {
   active: boolean
 }
 
+// Traits rouges dessinés par Mélanie sur le rendu ou sur une image de référence (calque PNG transparent).
+export interface AiMark {
+  target: 'render' | number // le rendu, ou l'identifiant de l'image de référence
+  overlay: Uint8Array
+}
+
 export interface AiApi {
   status(): Promise<AiStatus>
   setKey(key: string | null): Promise<void>
   saveSettings(settings: Partial<AiSettings>): Promise<void>
   listModels(): Promise<{ id: string; name: string }[]>
-  edit(renderId: number, prompt: string, referenceImageIds: number[]): Promise<AiProposal[]>
+  edit(renderId: number, prompt: string, referenceImageIds: number[], marks?: AiMark[]): Promise<AiProposal[]>
   cancel(): Promise<void>
   keep(versionId: number): Promise<void>
   history(renderId: number): Promise<AiVersion[]>
@@ -291,6 +337,7 @@ export interface LinkCheckProgress {
 export interface MdekoApi {
   projects: ProjectsApi
   ai: AiApi
+  homebyme: HomeByMeApi
   getAppInfo(): Promise<AppInfo>
   openDataFolder(): Promise<void>
   backupNow(): Promise<string>
@@ -361,7 +408,8 @@ export const IPC = {
   updateProgress: 'update:progress',
   // Projets : un canal unique, la méthode appelée est passée en premier argument.
   projects: 'projects:call',
-  ai: 'ai:call'
+  ai: 'ai:call',
+  homebyme: 'homebyme:call'
 } as const
 
 export const PROJECT_METHODS = [
@@ -369,5 +417,5 @@ export const PROJECT_METHODS = [
   'reorder', 'addNeed', 'setNeedRoom', 'setNeedChoice', 'setNeedAlternatives', 'setNeedImages', 'removeNeed', 'setNeedQuantity', 'setTrendImages', 'listInspirationImages', 'listPaints', 'createPaint',
   'updatePaint', 'deletePaint', 'countPaintProjects', 'updatePaintBrand', 'replaceRenderImage', 'addMarker', 'moveMarker', 'removeMarker',
   'listArtisans', 'saveArtisan', 'setLinks', 'getSettings', 'saveSettings', 'pages', 'editText', 'addNote', 'moveNote',
-  'deleteNote', 'adjust', 'resetPage', 'export', 'openFolder'
+  'deleteNote', 'adjust', 'resetPage', 'export', 'prepareMail', 'openFolder'
 ] as const satisfies readonly (keyof ProjectsApi)[]

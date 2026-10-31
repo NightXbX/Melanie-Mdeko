@@ -3032,3 +3032,228 @@ img.pv {
   border-left: 1px solid rgba(255, 255, 255, 0.2) !important;
   border-radius: 0 8px 8px 0 !important;
 }
+
+/* Import depuis HomeByMe */
+.hbm-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hbm-busy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.hbm-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.hbm-body h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.hbm-rooms {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px 16px;
+}
+
+.hbm-room {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.hbm-room select {
+  max-width: 60%;
+}
+
+.hbm-row {
+  display: grid;
+  grid-template-columns: auto 64px minmax(0, 1fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--separator);
+}
+
+.hbm-row.is-off .hbm-thumb,
+.hbm-row.is-off .hbm-info {
+  opacity: 0.55;
+}
+
+.hbm-thumb {
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--separator);
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.hbm-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.hbm-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hbm-name {
+  font-weight: 500;
+}
+
+.hbm-meta,
+.hbm-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.hbm-match {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.hbm-label {
+  width: 100%;
+}
+
+.hbm-suggestions,
+.hbm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+}
+
+.hbm-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  padding: 3px 8px 3px 3px;
+  border: 1px solid var(--separator);
+  border-radius: 8px;
+  background: var(--window-bg);
+  font-size: 12px;
+  text-align: left;
+}
+
+.hbm-suggestion:hover {
+  border-color: var(--accent);
+}
+
+.hbm-suggestion img,
+.hbm-article img {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  object-fit: contain;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.hbm-suggestion span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hbm-article {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.hbm-article small {
+  display: block;
+  color: var(--text-secondary);
+}
+
+/* Traits rouges sur le rendu ou une image de référence (assistant IA) */
+.markup-layer {
+  position: absolute;
+  pointer-events: none;
+}
+
+.markup-layer.is-active {
+  pointer-events: auto;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.ai-markup-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ai-ref-marked {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #e5322d;
+  pointer-events: none;
+}
+
+.ai-ref-markup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: calc(100vh - 120px);
+}
+
+.ai-ref-stage {
+  flex: 1;
+}
+
+/* Envoi du design book au client */
+.send-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 640px;
+}
+
+.send-reset {
+  align-self: flex-start;
+  margin-top: -8px;
+}
+
+.send-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.send-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}

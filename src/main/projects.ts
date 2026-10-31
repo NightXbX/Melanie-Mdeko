@@ -11,7 +11,7 @@ import type {
   ProjectSummary,
   RenderSection
 } from '@shared/projects'
-import { DEFAULT_PAINT_BRAND } from '@shared/projects'
+import { DEFAULT_MAIL_BODY, DEFAULT_MAIL_SUBJECT, DEFAULT_PAINT_BRAND } from '@shared/projects'
 import type { BookAdjustment } from '@shared/book'
 import { CARD_COLUMNS, toCard } from './articles'
 import { mediaUrl, thumbnailUrl } from './media-urls'
@@ -111,7 +111,9 @@ export function getProject(db: DatabaseSync, id: number): Project | null {
       db
         .prepare('SELECT i.id, i.rel_path FROM project_trend_images t JOIN images i ON i.id = t.image_id WHERE t.project_id = ? ORDER BY t.sort')
         .all(id) as { id: number; rel_path: string }[]
-    ).map((i) => ({ id: i.id, url: mediaUrl(i.rel_path) }))
+    ).map((i) => ({ id: i.id, url: mediaUrl(i.rel_path) })),
+    homebymeUrl: (p.homebyme_url as string | null) ?? null,
+    mailedAt: (p.mailed_at as string | null) ?? null
   }
 }
 
@@ -504,7 +506,9 @@ const SETTING_KEYS = {
   email: 'designer_email',
   introText: 'text_intro',
   wishesText: 'text_wishes',
-  closingText: 'text_closing'
+  closingText: 'text_closing',
+  mailSubject: 'mail_subject',
+  mailBody: 'mail_body'
 } as const
 
 export function getSettings(db: DatabaseSync): DesignerSettings {
@@ -524,7 +528,9 @@ export function getSettings(db: DatabaseSync): DesignerSettings {
     reviewQrUrl: qrPath ? mediaUrl(qrPath.rel_path) : null,
     introText: get('introText'),
     wishesText: get('wishesText'),
-    closingText: get('closingText')
+    closingText: get('closingText'),
+    mailSubject: get('mailSubject') || DEFAULT_MAIL_SUBJECT,
+    mailBody: get('mailBody') || DEFAULT_MAIL_BODY
   }
 }
 
