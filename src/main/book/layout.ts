@@ -12,6 +12,7 @@ export interface BookArticle {
   priceCents: number | null
   summable: boolean // prix additionnable dans le total (pas au m², au rouleau ni sur devis)
   supplier: string | null
+  description: string | null // montrée sous l'article (sauf sur les pages « suite », trop serrées)
   url: string | null
   image: ImageRef | null
   images: ImageRef[] // photos montrées dans le book (« Mon choix » peut en avoir plusieurs)
@@ -108,6 +109,11 @@ function articleLink(box: Box, url: string, size: number, id: string): Element {
 
 function label(box: Box, value: string, size = 8.5, id?: string): Element {
   return text(box, value.toUpperCase(), { size, weight: 500, color: COLORS.taupeDark, letterSpacing: 2 }, id ? { id } : {})
+}
+
+// Description d'un article, en petit sous ses informations.
+function description(box: Box, value: string, size: number, max: number, id: string): Element {
+  return text(box, truncate(value.replace(/\s+/g, ' ').trim(), max), { size, weight: 300, color: COLORS.textSoft, lineHeight: 1.3 }, { id })
 }
 
 // Pied de page discret : m·deko et le numéro de page.
@@ -276,12 +282,15 @@ function needPages(need: BookNeed, prices: boolean): Page[] {
     const inner = { x: photo.x + 6, y: photo.y + 6, w: photo.w - 12, h: photo.h - 12 }
     const images = c.images.slice(0, 4)
     if (images.length) photoGrid(inner, images.length).forEach((cell, i) => el.push(fitted(images[i], cell, id(`photo${i + 1}`))))
+    // Avec une description, prix et fournisseur lui laissent la moitié droite (relue par read-mdeko.ts).
+    const d = c.description
     el.push(
       label({ x: MARGIN, y: 145, w: 128, h: 5 }, 'Mon choix', 8.5, id('label')),
       text({ x: MARGIN, y: 151, w: 128, h: 13 }, truncate(c.name, 90), { size: 14, weight: 300, lineHeight: 1.25 }, { id: id('name') }),
-      text({ x: MARGIN, y: 165, w: 90, h: 9 }, priceLabel(c, prices, need.quantity), { size: prices ? 18 : 12, weight: prices ? 400 : 300, valign: 'middle' }, { id: id('price') }),
-      text({ x: MARGIN, y: 175, w: 128, h: 6 }, c.supplier ?? '', { size: 11, weight: 300, color: COLORS.textSoft }, { id: id('supplier') })
+      text({ x: MARGIN, y: 165, w: d ? 62 : 90, h: 9 }, priceLabel(c, prices, need.quantity), { size: prices ? 18 : 12, weight: prices ? 400 : 300, valign: 'middle' }, { id: id('price') }),
+      text({ x: MARGIN, y: 175, w: d ? 62 : 128, h: 6 }, c.supplier ?? '', { size: 11, weight: 300, color: COLORS.textSoft }, { id: id('supplier') })
     )
+    if (d) el.push(description({ x: 86, y: 165.5, w: 62, h: 23 }, d, 9, 170, id('description')))
     if (c.url) el.push(articleLink({ x: MARGIN, y: 182, w: 60, h: 6 }, c.url, 10, id('link')))
   }
 
@@ -310,6 +319,7 @@ function needPages(need: BookNeed, prices: boolean): Page[] {
         text({ x: tx, y: y + 25, w: 61, h: 5 }, a.supplier ?? '', { size: 9, weight: 300, color: COLORS.textSoft }, { id: id('supplier') })
       )
       if (a.url) el.push(articleLink({ x: tx, y: y + 31, w: 40, h: 5 }, a.url, 9, id('link')))
+      if (a.description) el.push(description({ x: tx, y: y + 38.5, w: 61, h: 11 }, a.description, 8, 110, id('description')))
     })
   }
   const pages: Page[] = [{ key: `need:${need.id}`, elements: el }]
@@ -375,6 +385,7 @@ function choicesPages(needs: BookNeed[], prices: boolean): Page[] {
         text({ x, y: 142, w, h: 6 }, c.supplier ?? '', { size: 10, weight: 300, color: COLORS.textSoft }, { id: id('supplier') })
       )
       if (c.url) el.push(articleLink({ x, y: 149, w: 45, h: 6 }, c.url, 9.5, id('link')))
+      if (c.description) el.push(description({ x, y: 157.5, w, h: 22 }, c.description, 8.5, 140, id('description')))
     })
     pages.push({ key: `choices:${slice[0].id}`, elements: el })
   }

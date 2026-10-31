@@ -96,6 +96,7 @@ interface Slot {
   price: Area
   supplier: Area
   link: Area
+  description?: Area
 }
 
 function readArticle(mupdf: MupdfModule, p: MdekoPage, s: Slot, section: string): { row: RowDraft; quantity: number } | null {
@@ -112,7 +113,8 @@ function readArticle(mupdf: MupdfModule, p: MdekoPage, s: Slot, section: string)
       url,
       supplier: textIn(p, s.supplier),
       images: photos.map((i) => encodeImage(mupdf, i.image)),
-      highlighted: false
+      highlighted: false,
+      ...(s.description && textIn(p, s.description) ? { description: textIn(p, s.description).replace(/…$/, '') } : {})
     },
     quantity
   }
@@ -218,9 +220,10 @@ export async function* readMdekoBook(mupdf: MupdfModule, doc: Mupdf.Document): A
         const choice = readArticle(mupdf, p, {
           photo: { x0: 15, x1: 150, y0: 20, y1: 142 },
           name: { x0: 15, x1: 150, y0: 149, y1: 164 },
-          price: { x0: 15, x1: 150, y0: 164, y1: 173.5 },
-          supplier: { x0: 15, x1: 150, y0: 173.5, y1: 181 },
-          link: { x0: 15, x1: 150, y0: 181, y1: 190 }
+          price: { x0: 15, x1: 84, y0: 164, y1: 173.5 },
+          supplier: { x0: 15, x1: 84, y0: 173.5, y1: 181 },
+          link: { x0: 15, x1: 84, y0: 181, y1: 190 },
+          description: { x0: 84, x1: 150, y0: 164, y1: 190 }
         }, label(title))
         if (!choice) continue
         need = { room, label: label(title), quantity: choice.quantity, choice: choice.row, alternatives: [] }
@@ -231,7 +234,8 @@ export async function* readMdekoBook(mupdf: MupdfModule, doc: Mupdf.Document): A
             name: { x0: 214, x1: 290, y0: y - 1, y1: y + 16 },
             price: { x0: 214, x1: 290, y0: y + 16, y1: y + 24 },
             supplier: { x0: 214, x1: 290, y0: y + 24, y1: y + 30.5 },
-            link: { x0: 214, x1: 290, y0: y + 30.5, y1: y + 38 }
+            link: { x0: 214, x1: 290, y0: y + 30.5, y1: y + 38 },
+            description: { x0: 214, x1: 290, y0: y + 38, y1: y + 52 }
           }, need.label)
           if (a) need.alternatives.push(a.row)
         }
@@ -246,7 +250,8 @@ export async function* readMdekoBook(mupdf: MupdfModule, doc: Mupdf.Document): A
             name: { x0: x, x1: x + 60, y0: 115, y1: 132.5 },
             price: { x0: x, x1: x + 60, y0: 132.5, y1: 141.5 },
             supplier: { x0: x, x1: x + 60, y0: 141.5, y1: 148.5 },
-            link: { x0: x, x1: x + 60, y0: 148.5, y1: 156 }
+            link: { x0: x, x1: x + 60, y0: 148.5, y1: 156 },
+            description: { x0: x, x1: x + 60, y0: 156, y1: 182 }
           }, label(c.text.trim()))
           if (a) yield { kind: 'need', room, label: label(c.text.trim()), quantity: a.quantity, choice: a.row, alternatives: [] }
         }

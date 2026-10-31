@@ -57,9 +57,41 @@ describe('recherche', () => {
   })
 
   it('résiste aux caractères spéciaux', () => {
-    expect(ftsQuery('  "fauteuil" (d\'or) * ')).toBe('"fauteuil"* "d"* "or"*')
+    expect(ftsQuery('  "fauteuil" (d\'or) * ')).toBe('"fauteuil"* AND "or"*')
     expect(ftsQuery(' ;; ')).toBeNull()
     expect(() => names({ text: 'AND OR NOT "' })).not.toThrow()
+  })
+})
+
+describe('recherche tolérante', () => {
+  const add = (id: number, name: string, category: number | null = null) => {
+    db.prepare('INSERT INTO articles (id, name, category_id, price_kind) VALUES (?, ?, ?, ?)').run(id, name, category, 'fixed')
+    reindexArticle(db, id)
+  }
+
+  it('ignore les petits mots et le pluriel', () => {
+    db.prepare('INSERT INTO categories (id, family_id, name) VALUES (3, 2, ?)').run('Tables à manger')
+    add(10, 'Table ronde Oslo', 3)
+    add(11, 'Tables gigognes')
+    expect(names({ text: 'table a manger' })).toEqual(['Table ronde Oslo'])
+    expect(names({ text: 'tables', sort: 'name' })).toEqual(['Table ronde Oslo', 'Tables gigognes'])
+    expect(names({ text: 'bibliotheques', sort: 'name' })).toEqual(['Bibliothèque sur mesure', 'Étagère murale'])
+  })
+
+  it('accepte une faute de frappe dans la recherche', () => {
+    expect(names({ text: 'fauteiul', sort: 'name' })).toEqual(['Fauteuil en chêne', 'Fauteuil terracotta'])
+    expect(names({ text: 'etagre', sort: 'name' })).toEqual(['Bibliothèque sur mesure', 'Étagère murale'])
+    expect(names({ text: 'terracota' })).toEqual(['Fauteuil terracotta'])
+  })
+
+  it('retrouve un article dont le nom a été mal écrit', () => {
+    add(12, 'Fauteuill rotin')
+    expect(names({ text: 'fauteuil', sort: 'name' })).toEqual(['Fauteuil en chêne', 'Fauteuil terracotta', 'Fauteuill rotin'])
+    // Un mot proche mais différent et courant n'est pas confondu.
+    add(13, 'Porte-revues')
+    add(14, 'Poste radio')
+    add(15, 'Poste murale')
+    expect(names({ text: 'porte' })).toEqual(['Porte-revues'])
   })
 })
 

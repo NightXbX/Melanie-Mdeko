@@ -1,4 +1,5 @@
 import { Icon, type IconName } from './Icon'
+import { SaveButton } from './SaveButton'
 import { UpdateBar } from './UpdateBar'
 
 export type View = 'shopping' | 'projects' | 'artisans' | 'check' | 'trash'
@@ -32,6 +33,7 @@ export function Sidebar({ current, onSelect, onSettings }: Props) {
           {item('artisans', 'people', 'Artisans')}
         </div>
         <div className="sidebar-section sidebar-bottom">
+          <SaveButton />
           {item('check', 'shield', 'Vérification')}
           {item('trash', 'trash', 'Corbeille')}
           <button type="button" className="sidebar-item" onClick={onSettings}>

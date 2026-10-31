@@ -3,7 +3,7 @@ import { useState, type DragEvent, type HTMLAttributes } from 'react'
 // Glisser-déposer pour ranger des listes (articles, pièces, teintes…) : on attrape un élément et on le
 // lâche avant ou après un autre, ou dans une zone (une pièce vide, « Mon choix »).
 // Un seul déplacement à la fois dans toute l'appli : on retient ce qui est en train d'être déplacé.
-let dragged: { kind: string; id: number } | null = null
+let dragged: { kind: string; id: number; zone?: string } | null = null
 
 const TYPE = 'application/x-mdeko-move'
 
@@ -12,6 +12,7 @@ export interface Drop {
   target: number | null // élément sur lequel on le lâche (null : la zone elle-même)
   after: boolean // à placer après la cible plutôt qu'avant
   zone?: string // zone d'arrivée
+  from?: string // zone de départ (pour passer d'une liste à une autre)
 }
 
 interface Options {
@@ -42,8 +43,8 @@ export function useSortable(kind: string, { axis = 'vertical', onDrop }: Options
       'data-drop': dragging === id ? 'dragging' : over?.key === key ? (over.after ? 'after' : 'before') : undefined,
       onDragStart: (e) => {
         e.stopPropagation()
-        dragged = { kind, id }
-        e.dataTransfer.effectAllowed = 'move'
+        dragged = { kind, id, zone }
+        e.dataTransfer.effectAllowed = 'copyMove'
         e.dataTransfer.setData(TYPE, String(id))
         setDragging(id)
       },
@@ -61,10 +62,10 @@ export function useSortable(kind: string, { axis = 'vertical', onDrop }: Options
         if (!accepts()) return
         e.preventDefault()
         e.stopPropagation()
-        const moved = dragged!.id
+        const { id: moved, zone: from } = dragged!
         const after = half(e)
         end()
-        if (moved !== id) onDrop({ id: moved, target: id, after, zone })
+        if (moved !== id || from !== zone) onDrop({ id: moved, target: id, after, zone, from })
       },
       onDragEnd: end
     }
@@ -86,9 +87,10 @@ export function useSortable(kind: string, { axis = 'vertical', onDrop }: Options
       onDrop: (e) => {
         if (!accepts()) return
         e.preventDefault()
-        const moved = dragged!.id
+        e.stopPropagation()
+        const { id: moved, zone: from } = dragged!
         end()
-        onDrop({ id: moved, target: null, after: true, zone: name })
+        onDrop({ id: moved, target: null, after: true, zone: name, from })
       }
     }
   }

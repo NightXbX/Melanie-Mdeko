@@ -12,6 +12,7 @@ const article = (name: string, cents: number | null, summable = true): BookArtic
   priceCents: cents,
   summable,
   supplier: 'Sklum',
+  description: null,
   url: `https://exemple.fr/${encodeURIComponent(name)}`,
   image: img,
   images: [img]
@@ -187,6 +188,13 @@ describe('design book', () => {
     expect(textsOf(page)).toEqual(expect.arrayContaining(['BILBOQUET DECO', 'NUANCIER', '01', 'MARELLE', 'Bilboquet Deco\nRéf. 12', 'CODE PROMO : CODE']))
     expect(textsOf(page).join(' ')).not.toContain('#F4F2ED')
     expect(page.elements.some((e) => e.type === 'rect' && e.fill === '#F4F2ED')).toBe(true)
+  })
+
+  it('montre la description des articles', () => {
+    const choice = { ...article('Canapé', 90000), description: 'Velours côtelé, assise profonde' }
+    const other = { ...article('Canapé droit', 70000), description: 'Lin lavé' }
+    const page = byKey(buildBook(data({ needs: [{ id: 9, title: 'Canapés', room: null, quantity: 1, choice, alternatives: [other] }] })), 'need:9')
+    expect(textsOf(page)).toEqual(expect.arrayContaining(['Velours côtelé, assise profonde', 'Lin lavé']))
   })
 
   it('compte les quantités dans les prix et le total', () => {

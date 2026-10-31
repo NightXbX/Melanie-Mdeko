@@ -143,7 +143,7 @@ export class BookImporter {
       this.db
         .prepare(
           `INSERT INTO articles (name, category_id, supplier_id, price_cents, price_kind, price_text, url, url_clean,
-             dimensions, color_material) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+             dimensions, color_material, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           row.name || 'Sans nom',
@@ -155,7 +155,8 @@ export class BookImporter {
           row.url,
           link,
           dimensions(row.name),
-          colorMaterial(row.name)
+          colorMaterial(row.name),
+          row.description ?? null
         ).lastInsertRowid
     )
     row.images.forEach((img, sort) =>

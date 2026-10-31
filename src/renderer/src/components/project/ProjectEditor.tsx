@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { BookFormat, DesignerSettings, Project } from '@shared/projects'
 import { useApp } from '../../app-context'
+import { useViewActive } from '../../lib/keep-alive'
 import { Icon } from '../Icon'
 import { BookPreview } from './BookPreview'
 import { NeedsSection } from './NeedsSection'
 import { RendersSection } from './RendersSection'
+import { Slideshow } from './Slideshow'
 import { TrendSection } from './TrendSection'
 import { ArtisansSection, ClientSection, PaintsSection, TextsSection, WishesSection } from './sections'
 
@@ -24,6 +26,21 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
   const [preview, setPreview] = useState(false)
   const [previewOnly, setPreviewOnly] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [slideshow, setSlideshow] = useState(false)
+  const closeSlideshow = useCallback(() => setSlideshow(false), [])
+  const active = useViewActive()
+
+  // F5 lance le diaporama, comme dans PowerPoint.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (active && e.key === 'F5') {
+        e.preventDefault()
+        setSlideshow(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [active])
 
   const reload = useCallback(async () => {
     const p = await window.mdeko.projects.get(projectId)
@@ -38,11 +55,11 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
 
   const exportBook = async (format: BookFormat) => {
     setBusy(true)
-    notify('Création du design book…')
     try {
+      // Mélanie choisit où l'enregistrer (le dernier dossier utilisé est reproposé).
       const file = await window.mdeko.projects.export(projectId, format)
-      // Projets › 2026 › Mme Durand : on montre où le fichier a été rangé.
-      const where = file.split(/[\\/]/).slice(-4, -1).join(' › ')
+      if (!file) return
+      const where = file.split(/[\\/]/).slice(-3, -1).join(' › ')
       notify(`Design book enregistré dans ${where}`)
     } catch (e) {
       notify(`Le design book n’a pas pu être créé : ${(e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`)
@@ -89,12 +106,18 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
               {previewOnly ? 'Réduire l’aperçu' : 'Agrandir l’aperçu'}
             </button>
           )}
+          {preview && (
+            <button type="button" className="button" onClick={() => setSlideshow(true)}>
+              <Icon name="play" size={12} />
+              Diaporama
+            </button>
+          )}
           <button type="button" className="button" title="Ouvrir le dossier du projet" onClick={() => void window.mdeko.projects.openFolder(projectId)}>
             <Icon name="folder" size={14} />
             Dossier
           </button>
           <div className="segmented">
-            <span>Exporter</span>
+            <span>{busy ? 'Création…' : 'Enregistrer sous'}</span>
             <button type="button" className="button" disabled={busy} onClick={() => void exportBook('pdf')}>
               PDF
             </button>
@@ -131,6 +154,7 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
         </div>
         {preview && <BookPreview projectId={projectId} version={project} onChanged={() => void reload()} />}
       </div>
+      {slideshow && <Slideshow projectId={projectId} onClose={closeSlideshow} />}
     </>
   )
 }

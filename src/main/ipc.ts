@@ -10,6 +10,7 @@ import {
   type DownloadedImage,
   type ImportSummary,
   type ImageUpload,
+  type ProductPrefill,
   type UndoResult
 } from '@shared/api'
 import {
@@ -27,6 +28,7 @@ import { articleFacets, getArticle, searchArticles } from './articles'
 import { listBackups } from './backup'
 import { checkDatabase, checkLinks, type LinkResponse } from './check'
 import { importPdf } from './import'
+import { parseProductPage, type ProductInfo } from './product-page'
 import { schemaVersion } from './db/database'
 import type { DataPaths } from './paths'
 
@@ -62,6 +64,11 @@ export function registerIpc(db: DatabaseSync, paths: DataPaths, backupNow: () =>
   ipcMain.handle(IPC.saveArticle, (_e, input: ArticleInput) => saveArticle(db, input, undo))
   ipcMain.handle(IPC.uploadImage, (_e, image: ImageUpload) => uploadImage(db, paths.root, image))
   ipcMain.handle(IPC.downloadImage, (_e, url: string) => downloadImage(url))
+  ipcMain.handle(IPC.readProductPage, async (_e, url: string): Promise<ProductPrefill | null> => {
+    const info = await readProductPage(url)
+    if (!info) return null
+    return { name: info.name, priceCents: info.priceCents, supplier: supplierFor(db, url) ?? info.siteName, description: info.description, imageUrls: info.imageUrls }
+  })
   ipcMain.handle(IPC.trashArticle, (_e, id: number) => trashArticle(db, id, undo))
   ipcMain.handle(IPC.restoreArticle, (_e, id: number) => restoreArticle(db, id, undo))
   ipcMain.handle(IPC.listTrash, () => listTrash(db))
@@ -137,6 +144,67 @@ async function downloadImage(url: string): Promise<DownloadedImage> {
   return { bytes, mimeType }
 }
 
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
+  Accept: 'text/html,application/xhtml+xml',
+  'Accept-Language': 'fr-FR,fr;q=0.9'
+}
+
+// Fournisseur déjà connu pour ce site (kavehome.com → « Kave Home »).
+function supplierFor(db: DatabaseSync, url: string): string | null {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase()
+    const row = db
+      .prepare("SELECT name FROM suppliers WHERE domain IS NOT NULL AND (? = domain OR ? LIKE '%.' || domain) ORDER BY length(domain) DESC LIMIT 1")
+      .get(host, host) as { name: string } | undefined
+    return row?.name ?? null
+  } catch {
+    return null
+  }
+}
+
+// Page produit : d'abord une simple lecture (rapide), puis, si le site ne répond pas ou construit sa page
+// par script, une fenêtre invisible qui l'ouvre comme un navigateur. null : rien de lisible.
+async function readProductPage(url: string): Promise<ProductInfo | null> {
+  if (!/^https?:\/\//i.test(url)) return null
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 15000)
+  try {
+    const response = await net.fetch(url, { redirect: 'follow', signal: controller.signal, headers: BROWSER_HEADERS })
+    if (response.ok && (response.headers.get('content-type') ?? '').includes('html')) {
+      const info = parseProductPage(await response.text(), response.url || url)
+      if (info?.name && info.imageUrls.length) return info
+    }
+  } catch {
+    // Site injoignable par cette voie : on essaie avec la fenêtre invisible.
+  } finally {
+    clearTimeout(timer)
+  }
+  return readWithBrowser(url)
+}
+
+async function readWithBrowser(url: string): Promise<ProductInfo | null> {
+  // Session à part, en mémoire : rien n'est gardé (cookies, cache) après la lecture.
+  const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, partition: 'lecture-produit', images: false } })
+  win.webContents.setAudioMuted(true)
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  win.webContents.session.on('will-download', (e) => e.preventDefault())
+  try {
+    await Promise.race([
+      win.loadURL(url, { userAgent: BROWSER_HEADERS['User-Agent'] }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('délai dépassé')), 25000))
+    ])
+    // Laisse aux scripts de la page le temps d'ajouter les informations du produit.
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    const html = (await win.webContents.executeJavaScript('document.documentElement.outerHTML')) as string
+    return parseProductPage(html, win.webContents.getURL() || url)
+  } catch {
+    return null
+  } finally {
+    win.destroy()
+  }
+}
+
 // Ouvre la page du produit comme un navigateur (beaucoup de sites refusent les requêtes sans en-têtes).
 async function fetchLink(url: string): Promise<LinkResponse> {
   const controller = new AbortController()
@@ -145,11 +213,7 @@ async function fetchLink(url: string): Promise<LinkResponse> {
     const response = await net.fetch(url, {
       redirect: 'follow',
       signal: controller.signal,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
-        Accept: 'text/html,application/xhtml+xml',
-        'Accept-Language': 'fr-FR,fr;q=0.9'
-      }
+      headers: BROWSER_HEADERS
     })
     void response.body?.cancel().catch(() => undefined)
     return { status: response.status, finalUrl: response.url || null }

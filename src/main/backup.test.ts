@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createBackup, ensureDailyBackup, listBackups } from './backup'
+import { AutoBackup, createBackup, ensureDailyBackup, listBackups } from './backup'
 import { migrate, openDatabase } from './db/database'
 
 describe('sauvegardes', () => {
@@ -55,5 +55,16 @@ describe('sauvegardes', () => {
       createBackup(db, dir, 'quotidienne', new Date(2026, 0, 1 + i))
     }
     expect(listBackups(dir).filter((b) => b.reason === 'avant-mise-a-jour')).toHaveLength(1)
+  })
+
+  it('ne fait une copie automatique que si la base a changé', () => {
+    const db = freshDb()
+    const auto = new AutoBackup(db, dir)
+    auto.start()
+    expect(auto.run(new Date(2026, 9, 31, 10, 0, 0))).toBeNull()
+    db.prepare("INSERT INTO suppliers (name) VALUES ('Atelier test')").run()
+    expect(auto.run(new Date(2026, 9, 31, 10, 1, 0))).not.toBeNull()
+    expect(auto.run(new Date(2026, 9, 31, 10, 2, 0))).toBeNull()
+    expect(listBackups(dir).map((b) => b.reason)).toEqual(['automatique'])
   })
 })

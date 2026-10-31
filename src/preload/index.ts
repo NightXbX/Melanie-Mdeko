@@ -13,6 +13,11 @@ const api: MdekoApi = {
   getAppInfo: () => ipcRenderer.invoke(IPC.getAppInfo),
   openDataFolder: () => ipcRenderer.invoke(IPC.openDataFolder),
   backupNow: () => ipcRenderer.invoke(IPC.backupNow),
+  onBackupDone: (listener) => {
+    const handler = (_e: IpcRendererEvent, at: string) => listener(at)
+    ipcRenderer.on(IPC.backupDone, handler)
+    return () => ipcRenderer.removeListener(IPC.backupDone, handler)
+  },
   searchArticles: (query) => ipcRenderer.invoke(IPC.searchArticles, query),
   articleFacets: (text, filters) => ipcRenderer.invoke(IPC.articleFacets, text, filters),
   getArticle: (id) => ipcRenderer.invoke(IPC.getArticle, id),
@@ -22,6 +27,7 @@ const api: MdekoApi = {
   saveArticle: (input) => ipcRenderer.invoke(IPC.saveArticle, input),
   uploadImage: (image) => ipcRenderer.invoke(IPC.uploadImage, image),
   downloadImage: (url) => ipcRenderer.invoke(IPC.downloadImage, url),
+  readProductPage: (url) => ipcRenderer.invoke(IPC.readProductPage, url),
   trashArticle: (id) => ipcRenderer.invoke(IPC.trashArticle, id),
   restoreArticle: (id) => ipcRenderer.invoke(IPC.restoreArticle, id),
   listTrash: () => ipcRenderer.invoke(IPC.listTrash),

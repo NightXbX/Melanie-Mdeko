@@ -92,6 +92,7 @@ export function getArticleInput(db: DatabaseSync, id: number): ArticleInput | nu
     categoryId: r.category_id as number | null,
     dimensions: (r.dimensions as string | null) ?? '',
     colorMaterial: (r.color_material as string | null) ?? '',
+    description: (r.description as string | null) ?? '',
     tags: tags.map((t) => t.name),
     privateNote: (r.private_note as string | null) ?? '',
     images: images.map((i) => ({ id: i.id, url: mediaUrl(i.rel_path) }))
@@ -126,7 +127,8 @@ function writeArticle(db: DatabaseSync, input: ArticleInput): number {
     url ? cleanUrl(url) : null,
     text(input.dimensions),
     text(input.colorMaterial),
-    text(input.privateNote)
+    text(input.privateNote),
+    text(input.description ?? '')
   ]
   let id = input.id
   if (id === null) {
@@ -134,7 +136,7 @@ function writeArticle(db: DatabaseSync, input: ArticleInput): number {
       db
         .prepare(
           `INSERT INTO articles (name, category_id, supplier_id, price_cents, price_kind, url, url_clean,
-             dimensions, color_material, private_note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+             dimensions, color_material, private_note, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(...values).lastInsertRowid
     )
@@ -142,7 +144,7 @@ function writeArticle(db: DatabaseSync, input: ArticleInput): number {
     const before = db.prepare('SELECT price_cents FROM articles WHERE id = ?').get(id) as { price_cents: number | null }
     db.prepare(
       `UPDATE articles SET name = ?, category_id = ?, supplier_id = ?, price_cents = ?, price_kind = ?, url = ?,
-         url_clean = ?, dimensions = ?, color_material = ?, private_note = ?, price_text = NULL, updated_at = ?,
+         url_clean = ?, dimensions = ?, color_material = ?, private_note = ?, description = ?, price_text = NULL, updated_at = ?,
          link_status = CASE WHEN url IS ? THEN link_status ELSE 'unchecked' END
        WHERE id = ?`
     ).run(...values, now(), url, id)

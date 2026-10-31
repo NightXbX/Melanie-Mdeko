@@ -3,6 +3,7 @@ import type { ArticleDetail as Detail } from '@shared/api'
 import { formatPrice } from '@shared/format'
 import type { ProjectSummary } from '@shared/projects'
 import { useApp } from '../app-context'
+import { useViewActive } from '../lib/keep-alive'
 import { Icon } from './Icon'
 
 interface Props {
@@ -14,6 +15,7 @@ interface Props {
 // Page détail d'un article, par-dessus la grille (Échap ou « Shopping list » pour revenir).
 export function ArticleDetail({ id, onClose, onEdit }: Props) {
   const { dataVersion, refresh, notify } = useApp()
+  const active = useViewActive()
   const [article, setArticle] = useState<Detail | null>(null)
   const [photo, setPhoto] = useState(0)
   const [projects, setProjects] = useState<ProjectSummary[]>([])
@@ -54,16 +56,17 @@ export function ArticleDetail({ id, onClose, onEdit }: Props) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape' && active) onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [onClose, active])
 
   if (!article) return <div className="detail" />
 
   const images = article.imageUrls
   const infos: [string, string | null][] = [
+    ['Description', article.description],
     ['Dimensions', article.dimensions],
     ['Couleur / matière', article.colorMaterial],
     ['Style', article.tags.join(', ') || null],

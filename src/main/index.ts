@@ -1,18 +1,21 @@
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
-import { app, BrowserWindow, dialog, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, dialog, nativeTheme, session, shell } from 'electron'
+import { IPC } from '@shared/api'
 import { ensureSearchIndex } from './articles'
-import { createBackup, ensureDailyBackup } from './backup'
+import { AutoBackup, createBackup, ensureDailyBackup } from './backup'
 import { migrate, openDatabase, pendingMigrations, schemaVersion } from './db/database'
 import { registerIpc } from './ipc'
 import { registerAiIpc } from './ai'
 import { registerProjectsIpc } from './projects-ipc'
 import { handleMedia, registerMediaScheme } from './media'
+import { attachContextMenu } from './context-menu'
 import { buildMenu } from './menu'
 import { resolveDataPaths, type DataPaths } from './paths'
 import { registerUpdates } from './update'
 
-const HOUR = 60 * 60 * 1000
+const MINUTE = 60 * 1000
+const HOUR = 60 * MINUTE
 
 let db: DatabaseSync
 let paths: DataPaths
@@ -82,10 +85,27 @@ function openData(): void {
   ensureSearchIndex(db)
   ensureDailyBackup(db, paths.backups)
   setInterval(() => ensureDailyBackup(db, paths.backups), HOUR)
+  // Chaque minute, une copie de la base si quelque chose a changé (l'interface affiche l'heure de la dernière).
+  const auto = new AutoBackup(db, paths.backups)
+  auto.start()
+  setInterval(() => {
+    try {
+      if (auto.run()) announceBackup()
+    } catch {
+      // Disque plein ou dossier indisponible : on réessaiera à la minute suivante.
+    }
+  }, MINUTE)
+}
+
+function announceBackup(): void {
+  const at = new Date().toISOString()
+  for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IPC.backupDone, at)
 }
 
 function backupNow(): string {
-  return createBackup(db, paths.backups, 'manuelle')
+  const file = createBackup(db, paths.backups, 'manuelle')
+  announceBackup()
+  return file
 }
 
 function createWindow(): void {
@@ -110,9 +130,19 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      spellcheck: true
     }
   })
+  // Correcteur d'orthographe : celui du Mac (langue détectée par macOS), le français ailleurs.
+  if (!isMac) {
+    try {
+      session.defaultSession.setSpellCheckerLanguages(['fr'])
+    } catch {
+      // Dictionnaire indisponible : les fautes ne sont simplement pas soulignées.
+    }
+  }
+  attachContextMenu(mainWindow)
 
   mainWindow.once('ready-to-show', () => mainWindow?.show())
   mainWindow.on('closed', () => {

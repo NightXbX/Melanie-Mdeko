@@ -31,6 +31,7 @@ const input = (over: Partial<ArticleInput> = {}): ArticleInput => ({
   categoryId: null,
   dimensions: '75 × 80 cm',
   colorMaterial: 'chenille vert',
+  description: 'Fauteuil enveloppant, pieds en chêne',
   tags: ['Scandinave', 'Cosy'],
   privateNote: 'Existe en terracotta',
   images: [],

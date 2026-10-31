@@ -23,6 +23,7 @@ export interface RowDraft {
   supplier: string
   images: EncodedImage[]
   highlighted: boolean // surligné au fluo : « Mon choix »
+  description?: string // book exporté par Mdeko
 }
 
 export interface Cover {

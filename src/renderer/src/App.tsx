@@ -8,6 +8,7 @@ import { CheckView } from './views/CheckView'
 import { ProjectsView } from './views/ProjectsView'
 import { ShoppingListView } from './views/ShoppingListView'
 import { TrashView } from './views/TrashView'
+import { KeepAlive } from './lib/keep-alive'
 
 export function App() {
   const [view, setView] = useState<View>('shopping')
@@ -40,11 +41,14 @@ export function App() {
     <AppProvider>
       <div className="app">
         <Sidebar current={view} onSelect={setView} onSettings={() => setSettingsOpen(true)} />
+        {/* La shopping list et les projets restent ouverts : on y revient exactement où on en était. */}
         <main className="content">
-          {view === 'shopping' && <ShoppingListView newArticleSignal={newArticleSignal} />}
-          {view === 'projects' && (
+          <KeepAlive active={view === 'shopping'}>
+            <ShoppingListView newArticleSignal={newArticleSignal} />
+          </KeepAlive>
+          <KeepAlive active={view === 'projects'}>
             <ProjectsView newProjectSignal={newProjectSignal} openRequest={openProject} onImport={(path) => setImporting({ path })} />
-          )}
+          </KeepAlive>
           {view === 'artisans' && <ArtisansView />}
           {view === 'check' && <CheckView />}
           {view === 'trash' && <TrashView />}

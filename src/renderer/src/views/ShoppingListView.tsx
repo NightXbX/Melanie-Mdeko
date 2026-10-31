@@ -8,6 +8,7 @@ import { FilterPanel } from '../components/FilterPanel'
 import { Icon } from '../components/Icon'
 import { Toolbar } from '../components/Toolbar'
 import { hasImages, readDrop, type DropContent } from '../lib/images'
+import { useViewActive } from '../lib/keep-alive'
 
 const PAGE = 60
 
@@ -37,6 +38,7 @@ const hasFilters = (f: ArticleFilters) =>
 
 export function ShoppingListView({ newArticleSignal }: { newArticleSignal: number }) {
   const { dataVersion, refresh, notify } = useApp()
+  const active = useViewActive()
   const [query, setQuery] = useState('')
   const text = useDebounced(query.trim(), 150)
   const [filters, setFilters] = useState<ArticleFilters>({})
@@ -115,7 +117,7 @@ export function ShoppingListView({ newArticleSignal }: { newArticleSignal: numbe
   // ⌘F place le curseur dans la recherche.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f' && overlay?.kind !== 'edit') {
+      if (active && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f' && overlay?.kind !== 'edit') {
         e.preventDefault()
         setOverlay(null)
         searchRef.current?.focus()
@@ -124,7 +126,7 @@ export function ShoppingListView({ newArticleSignal }: { newArticleSignal: numbe
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [overlay])
+  }, [overlay, active])
 
   const reset = () => {
     setQuery('')

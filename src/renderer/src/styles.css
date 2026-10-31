@@ -197,6 +197,18 @@ html:not([data-platform='darwin']) .sidebar-titlebar {
   overflow: auto;
 }
 
+/* Écran gardé ouvert en arrière-plan (shopping list, projets). */
+.view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.view[hidden] {
+  display: none;
+}
+
 /* Contrôles */
 
 .search-field {
@@ -755,6 +767,34 @@ html:not([data-platform='darwin']) .sidebar-titlebar {
   border-radius: 8px;
   background: #fff1ec;
   color: #b42d00;
+}
+
+.editor-notice {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #eef6ee;
+  color: #2c6b33;
+}
+
+.field-with-button {
+  display: flex;
+  gap: 8px;
+}
+
+.field-with-button input {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-with-button .button {
+  flex-shrink: 0;
+}
+
+.field > label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
 }
 
 .field-row {
@@ -1424,6 +1464,41 @@ img.pv {
   margin: 0 auto 0 0;
   font-size: 15px;
   font-weight: 600;
+}
+
+.need-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: auto;
+  min-width: 0;
+}
+
+.need-title input {
+  max-width: 100%;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: inherit;
+}
+
+.need-title input:hover {
+  border-color: var(--separator);
+}
+
+.need-title input:focus {
+  border-color: var(--accent);
+  background: var(--window-bg);
+  outline: none;
+}
+
+.need-title svg {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
 }
 
 .need-actions {
@@ -2407,6 +2482,40 @@ img.pv {
   width: 100%;
 }
 
+.mini-description {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.picker-count {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.save-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 8px;
+  padding: 0 4px;
+}
+
+.save-button {
+  width: 100%;
+  justify-content: center;
+}
+
+.save-status {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
 .update-version {
   font-size: 11px;
   color: var(--text-tertiary);
@@ -2843,4 +2952,83 @@ img.pv {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+}
+
+/* Diaporama du design book (plein écran) */
+.slideshow {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  cursor: default;
+}
+
+.slideshow.is-idle {
+  cursor: none;
+}
+
+.slideshow .slide-page {
+  margin: 0;
+  box-shadow: none;
+  cursor: inherit;
+}
+
+.slide-page .pv-link {
+  cursor: pointer;
+}
+
+.slideshow-controls {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: rgba(30, 30, 30, 0.85);
+  color: #fff;
+  font-size: 13px;
+  transform: translateX(-50%);
+  transition: opacity 0.3s;
+}
+
+.slideshow.is-idle .slideshow-controls {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.slideshow-controls span {
+  min-width: 56px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.slideshow-controls button {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.slideshow-controls button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.slideshow-controls button:disabled {
+  opacity: 0.35;
+}
+
+.slideshow-quit {
+  margin-left: 6px;
+  border-left: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: 0 8px 8px 0 !important;
 }

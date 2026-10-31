@@ -35,6 +35,7 @@ export interface ArticleCard {
   price: Price
   supplier: string | null
   thumbnailUrl: string | null
+  description: string | null
 }
 
 export interface ArticleDetail extends ArticleCard {
@@ -130,7 +131,7 @@ export interface ProjectsApi {
   adjust(id: number, pageKey: string, elementId: string, patch: BookAdjustment | null): Promise<void>
   resetPage(id: number, pageKey: string): Promise<void>
   deleteNote(noteId: number): Promise<void>
-  export(id: number, format: BookFormat): Promise<string>
+  export(id: number, format: BookFormat): Promise<string | null> // null : enregistrement annulé
   openFolder(id: number): Promise<void>
 }
 
@@ -203,6 +204,7 @@ export interface ArticleInput {
   categoryId: number | null
   dimensions: string
   colorMaterial: string
+  description: string
   tags: string[]
   privateNote: string
   images: EditableImage[]
@@ -228,12 +230,21 @@ export interface DownloadedImage {
   mimeType: string
 }
 
+// Fiche préremplie d'après la page du produit (champs vides : rien trouvé).
+export interface ProductPrefill {
+  name: string | null
+  priceCents: number | null
+  supplier: string | null
+  description: string | null
+  imageUrls: string[]
+}
+
 export interface UndoResult {
   label: string
   articleId: number
 }
 
-export type MenuCommand = 'undo' | 'new-article' | 'new-project' | 'settings' | 'import' | 'check-update'
+export type MenuCommand = 'undo' | 'save' | 'new-article' | 'new-project' | 'settings' | 'import' | 'check-update'
 
 // Nouvelle version publiée sur GitHub.
 export interface UpdateInfo {
@@ -283,6 +294,7 @@ export interface MdekoApi {
   getAppInfo(): Promise<AppInfo>
   openDataFolder(): Promise<void>
   backupNow(): Promise<string>
+  onBackupDone(listener: (at: string) => void): () => void
   searchArticles(query: ArticleQuery): Promise<ArticlePage>
   articleFacets(text: string, filters: ArticleFilters): Promise<ArticleFacets>
   getArticle(id: number): Promise<ArticleDetail | null>
@@ -292,6 +304,7 @@ export interface MdekoApi {
   saveArticle(input: ArticleInput): Promise<number>
   uploadImage(image: ImageUpload): Promise<EditableImage>
   downloadImage(url: string): Promise<DownloadedImage>
+  readProductPage(url: string): Promise<ProductPrefill | null>
   trashArticle(id: number): Promise<void>
   restoreArticle(id: number): Promise<void>
   listTrash(): Promise<ArticleCard[]>
@@ -317,6 +330,7 @@ export const IPC = {
   getAppInfo: 'app:get-info',
   openDataFolder: 'app:open-data-folder',
   backupNow: 'app:backup-now',
+  backupDone: 'app:backup-done',
   searchArticles: 'articles:search',
   articleFacets: 'articles:facets',
   getArticle: 'articles:get',
@@ -326,6 +340,7 @@ export const IPC = {
   saveArticle: 'articles:save',
   uploadImage: 'images:upload',
   downloadImage: 'images:download',
+  readProductPage: 'articles:read-product-page',
   trashArticle: 'articles:trash',
   restoreArticle: 'articles:restore',
   listTrash: 'articles:list-trash',

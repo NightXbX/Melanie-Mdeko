@@ -2,12 +2,14 @@ import { existsSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 
-export type BackupReason = 'quotidienne' | 'avant-mise-a-jour' | 'manuelle'
+export type BackupReason = 'quotidienne' | 'avant-mise-a-jour' | 'manuelle' | 'automatique'
 
+// « automatique » : copie faite chaque minute après une modification ; on garde la dernière demi-heure.
 const KEEP: Record<BackupReason, number> = {
   quotidienne: 30,
   'avant-mise-a-jour': 10,
-  manuelle: 10
+  manuelle: 10,
+  automatique: 30
 }
 
 export interface BackupFile {
@@ -16,7 +18,7 @@ export interface BackupFile {
   date: Date
 }
 
-const NAME = /^mdeko_(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})_(quotidienne|avant-mise-a-jour|manuelle)(?:-\d+)?\.sqlite$/
+const NAME = /^mdeko_(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})_(quotidienne|avant-mise-a-jour|manuelle|automatique)(?:-\d+)?\.sqlite$/
 
 const pad = (n: number): string => String(n).padStart(2, '0')
 
@@ -58,6 +60,33 @@ export function createBackup(db: DatabaseSync, dir: string, reason: BackupReason
 export function ensureDailyBackup(db: DatabaseSync, dir: string, now = new Date()): string | null {
   const doneToday = listBackups(dir).some((b) => b.reason === 'quotidienne' && sameDay(b.date, now))
   return doneToday ? null : createBackup(db, dir, 'quotidienne', now)
+}
+
+// Copie automatique, seulement si la base a changé depuis la précédente (total_changes compte les écritures de la connexion).
+export class AutoBackup {
+  private lastChanges = -1
+
+  constructor(
+    private db: DatabaseSync,
+    private dir: string
+  ) {}
+
+  private changes(): number {
+    return (this.db.prepare('SELECT total_changes() AS n').get() as { n: number }).n
+  }
+
+  // Point de départ : rien à copier tant que rien n'a changé.
+  start(): void {
+    this.lastChanges = this.changes()
+  }
+
+  run(now = new Date()): string | null {
+    const n = this.changes()
+    if (n === this.lastChanges) return null
+    const file = createBackup(this.db, this.dir, 'automatique', now)
+    this.lastChanges = n
+    return file
+  }
 }
 
 function prune(dir: string, reason: BackupReason): void {

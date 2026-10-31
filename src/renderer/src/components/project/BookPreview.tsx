@@ -242,6 +242,19 @@ export function BookPreview({ projectId, version, onChanged }: Props) {
   )
 }
 
+// Page en lecture seule (diaporama) : même rendu, sans rien de modifiable ; les liens s'ouvrent dans le navigateur.
+export function BookPage({ page, scale }: { page: Page; scale: number }) {
+  return (
+    <div className="preview-page slide-page" style={{ width: PAGE_SIZE.width * scale, height: PAGE_SIZE.height * scale }}>
+      <div className="preview-sheet" style={{ transform: `scale(${scale / CSS_PX_PER_MM})` }}>
+        {page.elements.map((el, i) => (
+          <PreviewElement key={el.id ?? i} element={el} readOnly onSave={() => undefined} onDeleteNote={() => undefined} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 const mm = (v: number) => `${v.toFixed(2)}mm`
 const box = (e: Box): CSSProperties => ({ left: mm(e.x), top: mm(e.y), width: mm(e.w), height: mm(e.h) })
 
@@ -251,10 +264,11 @@ interface ElementProps {
   onGrab?(down: ReactMouseEvent): void // élément déplaçable
   onFocus?(): void
   onDeleteNote(noteId: number): void
+  readOnly?: boolean
 }
 
 // Même rendu que html.ts (qui sert au PDF), pour que l'aperçu soit fidèle.
-function PreviewElement({ element: e, onSave, onGrab, onFocus, onDeleteNote }: ElementProps) {
+function PreviewElement({ element: e, onSave, onGrab, onFocus, onDeleteNote, readOnly }: ElementProps) {
   const grab = onGrab ? { 'data-el': '', onMouseDown: onGrab } : {}
   if (e.type === 'image') return <img className={`pv${onGrab ? ' pv-movable' : ''}`} src={e.image.url} alt="" style={box(e)} draggable={false} {...grab} />
   if (e.type === 'rect' || e.type === 'ellipse') {
@@ -289,11 +303,15 @@ function PreviewElement({ element: e, onSave, onGrab, onFocus, onDeleteNote }: E
       {r.text}
     </span>
   ))
-  if (!e.edit) {
-    // Texte fixe (logo, lien) : on le déplace en le faisant glisser.
+  if (!e.edit || readOnly) {
+    // Texte fixe (logo, lien) : on le déplace en le faisant glisser. En diaporama, un clic sur le lien ouvre le produit.
+    const link = e.link
+    const open = readOnly && link ? { onClick: (ev: ReactMouseEvent) => (ev.stopPropagation(), void window.mdeko.openExternal(link)) } : {}
     return (
       <div className={`pv pv-text${onGrab ? ' pv-movable' : ''}`} style={style} {...grab}>
-        <div className={e.link ? 'pv-link' : undefined}>{content}</div>
+        <div className={link ? 'pv-link' : undefined} {...open}>
+          {content}
+        </div>
       </div>
     )
   }

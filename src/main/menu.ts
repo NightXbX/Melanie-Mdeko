@@ -44,6 +44,9 @@ export function buildMenu(actions: MenuActions): void {
         { label: 'Nouveau projet', accelerator: 'Shift+CmdOrCtrl+N', click: () => send('new-project') },
         { label: 'Importer un design book ou une shopping list…', accelerator: 'CmdOrCtrl+I', click: () => send('import') },
         sep,
+        // Tout s'enregistre déjà tout seul : ⌘S termine la saisie en cours et fait une copie de sécurité.
+        { label: 'Enregistrer', accelerator: 'CmdOrCtrl+S', click: () => send('save') },
+        sep,
         ...(isMac ? [] : [{ label: 'Réglages…', accelerator: 'Ctrl+,', click: () => send('settings') }, sep]),
         { label: 'Faire une sauvegarde maintenant', click: actions.backupNow },
         { label: 'Afficher le dossier des données', click: actions.openDataFolder },

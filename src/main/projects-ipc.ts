@@ -50,7 +50,7 @@ export function registerProjectsIpc(db: DatabaseSync, paths: DataPaths): void {
     adjust: (_w, id, pageKey, elementId, patch) => p.adjustElement(db, id, pageKey, elementId, patch),
     resetPage: (_w, id, pageKey) => p.resetPageAdjustments(db, id, pageKey),
     deleteNote: (_w, noteId) => p.deleteNote(db, noteId),
-    export: (_w, id, format) => exportBook(db, paths, id, format),
+    export: (w, id, format) => exportBook(db, paths, id, format, w),
     openFolder: async (_w, id) => {
       await shell.openPath(projectFolder(db, paths, id))
     }

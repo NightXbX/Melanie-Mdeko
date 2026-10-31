@@ -3,8 +3,10 @@ import type { ArticleInput, EditableImage, EditorChoices, PriceKind } from '@sha
 import { parsePriceInput, priceInputText } from '@shared/format'
 import { normalizeUrlInput } from '@shared/url'
 import { hasImages, readDrop, uploadDrop, type DropContent } from '../lib/images'
+import { useViewActive } from '../lib/keep-alive'
 import { moved, useSortable } from '../lib/sortable'
 import { Icon } from './Icon'
+import { SAVE_EVENT } from './SaveButton'
 
 const PRICE_KINDS: { value: PriceKind; label: string }[] = [
   { value: 'fixed', label: 'Prix' },
@@ -24,6 +26,7 @@ const EMPTY: ArticleInput = {
   categoryId: null,
   dimensions: '',
   colorMaterial: '',
+  description: '',
   tags: [],
   privateNote: '',
   images: []
@@ -44,6 +47,11 @@ export function ArticleEditor({ articleId, initialDrop, onClose }: Props) {
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [reading, setReading] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const active = useViewActive()
+  const latest = useRef({ form, priceText })
+  latest.current = { form, priceText }
   const dirty = useRef(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const nameInput = useRef<HTMLInputElement>(null)
@@ -124,13 +132,53 @@ export function ArticleEditor({ articleId, initialDrop, onClose }: Props) {
     }
   }
 
+  // Fichier › Enregistrer (⌘S) enregistre aussi la fiche ouverte.
+  const saveRef = useRef(save)
+  saveRef.current = save
+  useEffect(() => {
+    const onSave = () => active && void saveRef.current()
+    window.addEventListener(SAVE_EVENT, onSave)
+    return () => window.removeEventListener(SAVE_EVENT, onSave)
+  }, [active])
+
+  // Remplit les champs encore vides d'après la page du produit (nom, prix, fournisseur, description, photos).
+  const fillFromLink = async (raw: string) => {
+    const url = normalizeUrlInput(raw)
+    if (!/^https?:\/\/[^/]+\.[^/]+/i.test(url) || reading) return
+    setReading(true)
+    setError(null)
+    setNotice(null)
+    try {
+      const info = await window.mdeko.readProductPage(url)
+      if (!info) {
+        setError('Impossible de lire la page de ce produit. Remplissez la fiche à la main.')
+        return
+      }
+      // La fiche a pu changer pendant la lecture : on part de ce qui est saisi maintenant.
+      const f = latest.current.form
+      if (!f) return
+      const patch: Partial<ArticleInput> = {}
+      if (!f.name.trim() && info.name) patch.name = info.name
+      if (!f.supplier.trim() && info.supplier) patch.supplier = info.supplier
+      if (!f.description.trim() && info.description) patch.description = info.description
+      const price = !latest.current.priceText.trim() && info.priceCents !== null
+      if (price) setPriceText(priceInputText(info.priceCents))
+      update(patch)
+      const photos = !f.images.length && info.imageUrls.length > 0
+      for (const imageUrl of photos ? info.imageUrls : []) await addImages({ files: [], url: imageUrl })
+      const filled = Object.keys(patch).length > 0 || price || photos
+      setNotice(filled ? 'Fiche remplie d’après la page du produit : vérifiez les informations.' : 'La fiche était déjà remplie : rien n’a été changé.')
+    } catch {
+      setError('Impossible d’ouvrir la page de ce produit. Remplissez la fiche à la main.')
+    } finally {
+      setReading(false)
+    }
+  }
+
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
       e.preventDefault()
       void cancel()
-    } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
-      e.preventDefault()
-      void save()
     }
   }
 
@@ -238,6 +286,7 @@ export function ArticleEditor({ articleId, initialDrop, onClose }: Props) {
 
         <div className="editor-fields">
           {error && <p className="editor-error">{error}</p>}
+          {notice && !error && <p className="editor-notice">{notice}</p>}
           <label className="field field-wide">
             <span>Nom</span>
             <input ref={nameInput} value={form.name} onChange={(e) => update({ name: e.target.value })} required />
@@ -295,10 +344,25 @@ export function ArticleEditor({ articleId, initialDrop, onClose }: Props) {
             </label>
           </div>
 
-          <label className="field field-wide">
-            <span>Lien du produit</span>
-            <input value={form.url} placeholder="https://…" onChange={(e) => update({ url: e.target.value })} />
-          </label>
+          <div className="field field-wide">
+            <label htmlFor="article-url">Lien du produit</label>
+            <div className="field-with-button">
+              <input
+                id="article-url"
+                value={form.url}
+                placeholder="Collez le lien : la fiche se remplit toute seule"
+                onChange={(e) => update({ url: e.target.value })}
+                onPaste={(e) => {
+                  // Lien collé dans une fiche encore vide : on la remplit tout de suite.
+                  const pasted = e.clipboardData.getData('text').trim()
+                  if (pasted && !form.name.trim()) void fillFromLink(pasted)
+                }}
+              />
+              <button type="button" className="button" disabled={reading || !form.url.trim()} onClick={() => void fillFromLink(form.url)}>
+                {reading ? 'Lecture de la page…' : 'Remplir avec ce lien'}
+              </button>
+            </div>
+          </div>
 
           <div className="field-row">
             <label className="field">
@@ -310,6 +374,11 @@ export function ArticleEditor({ articleId, initialDrop, onClose }: Props) {
               <input value={form.colorMaterial} onChange={(e) => update({ colorMaterial: e.target.value })} />
             </label>
           </div>
+
+          <label className="field field-wide">
+            <span>Description (montrée dans le design book)</span>
+            <textarea rows={2} value={form.description} onChange={(e) => update({ description: e.target.value })} />
+          </label>
 
           <div className="field field-wide">
             <span>Style</span>

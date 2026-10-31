@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ArticleCard as Card } from '@shared/api'
 import { formatPrice } from '@shared/format'
 import type { ProjectNeed, Room } from '@shared/projects'
+import { useApp } from '../../app-context'
 import { moved, useSortable } from '../../lib/sortable'
 import { ArticleEditorSheet } from '../ArticleEditorSheet'
 import { Icon } from '../Icon'
@@ -21,6 +22,7 @@ function Mini({ article, big }: { article: Card; big?: boolean }) {
         <span className="card-name">{article.name}</span>
         <span className="card-price">{formatPrice(article.price)}</span>
         {article.supplier && <span className="card-supplier">{article.supplier}</span>}
+        {article.description && <span className="mini-description">{article.description}</span>}
       </div>
     </div>
   )
@@ -30,7 +32,7 @@ const zoneOf = (roomId: number | null) => (roomId === null ? 'sans-piece' : Stri
 
 // Shopping list du projet, rangée par pièce (celles de « Vos envies ») : pour chaque besoin, « Mon choix »
 // et ses autres propositions. Tout se range en faisant glisser : les besoins d'une pièce à l'autre,
-// les propositions entre elles ou sur « Mon choix ».
+// les propositions entre elles ou sur « Mon choix », et d'un besoin à l'autre (elles restent aussi à leur place).
 export function NeedsSection({ project, reload }: SectionProps) {
   const [picking, setPicking] = useState<Picking | null>(null)
   const [editing, setEditing] = useState<Editing>(null)
@@ -140,6 +142,7 @@ export function NeedsSection({ project, reload }: SectionProps) {
         const cards = list.map((need) => (
           <NeedCard
             key={need.id}
+            projectId={project.id}
             need={need}
             rooms={rooms}
             drag={needs.item(need.id, zoneOf(need.roomId))}
@@ -195,6 +198,7 @@ export function NeedsSection({ project, reload }: SectionProps) {
 }
 
 interface NeedCardProps {
+  projectId: number
   need: ProjectNeed
   rooms: Room[]
   drag: ReturnType<ReturnType<typeof useSortable>['item']>
@@ -203,12 +207,34 @@ interface NeedCardProps {
   onEdit(articleId: number): void
 }
 
-function NeedCard({ need, rooms, drag, run, onPick, onEdit }: NeedCardProps) {
-  const alternatives = useSortable(`alternative:${need.id}`, {
+function NeedCard({ projectId, need, rooms, drag, run, onPick, onEdit }: NeedCardProps) {
+  const { notify } = useApp()
+  const altZone = `alts:${need.id}`
+  const choiceZone = `choice:${need.id}`
+  const altIds = need.alternatives.map((a) => a.id)
+  const title = need.label ?? need.category ?? 'Article'
+
+  // Les propositions de tous les besoins se partagent le même glisser-déposer : on les range dans leur besoin,
+  // on les lâche sur « Mon choix » pour les choisir, ou sur un autre besoin pour les y proposer aussi (copie).
+  const alternatives = useSortable('alternative', {
     onDrop: (drop) => {
-      // Une proposition lâchée sur « Mon choix » devient le choix.
-      if (drop.zone === 'choice') void run(window.mdeko.projects.setNeedChoice(need.id, drop.id))
-      else void run(window.mdeko.projects.setNeedAlternatives(need.id, moved(need.alternatives.map((a) => a.id), drop)))
+      const own = drop.from === altZone
+      if (drop.zone === choiceZone) {
+        if (own) return void run(window.mdeko.projects.setNeedChoice(need.id, drop.id))
+        if (drop.id === need.choice?.id) return
+        // Copie venue d'un autre besoin : elle devient le choix, l'ancien choix passe en tête des propositions.
+        void run(
+          (async () => {
+            await window.mdeko.projects.setNeedAlternatives(need.id, [drop.id, ...altIds.filter((id) => id !== drop.id)])
+            await window.mdeko.projects.setNeedChoice(need.id, drop.id)
+          })()
+        )
+        notify(`Nouveau choix pour « ${title} » (l’article reste aussi dans l’autre besoin)`)
+        return
+      }
+      if (!own && (drop.id === need.choice?.id || altIds.includes(drop.id))) return
+      void run(window.mdeko.projects.setNeedAlternatives(need.id, moved(altIds, drop)))
+      if (!own) notify(`Proposition ajoutée à « ${title} » (elle reste aussi dans l’autre besoin)`)
     }
   })
 
@@ -218,7 +244,7 @@ function NeedCard({ need, rooms, drag, run, onPick, onEdit }: NeedCardProps) {
         <span className="grip" title="Faire glisser pour déplacer">
           <Icon name="grip" size={14} />
         </span>
-        <h3>{need.label ?? need.category ?? 'Article'}</h3>
+        <NeedTitle projectId={projectId} need={need} run={run} />
         <div className="need-actions">
           <Quantity need={need} run={run} />
           {rooms.length > 0 && (
@@ -245,7 +271,7 @@ function NeedCard({ need, rooms, drag, run, onPick, onEdit }: NeedCardProps) {
         </div>
       </div>
       <div className="need-body">
-        <div className="need-choice" {...alternatives.zone('choice')}>
+        <div className="need-choice" {...alternatives.zone(choiceZone)}>
           <span className="need-label">Mon choix</span>
           {need.choice && (
             <>
@@ -258,10 +284,10 @@ function NeedCard({ need, rooms, drag, run, onPick, onEdit }: NeedCardProps) {
           )}
           {need.choiceImages.length > 1 && <BookPhotos need={need} run={run} />}
         </div>
-        <div className="need-alternatives">
+        <div className="need-alternatives" {...alternatives.zone(altZone)}>
           <span className="need-label">Autres propositions</span>
           {need.alternatives.map((a) => (
-            <div key={a.id} className="need-alternative" {...alternatives.item(a.id)}>
+            <div key={a.id} className="need-alternative" {...alternatives.item(a.id, altZone)}>
               <Mini article={a} />
               <div className="need-alt-actions">
                 <button type="button" className="button button-plain" onClick={() => void run(window.mdeko.projects.setNeedChoice(need.id, a.id))}>
@@ -287,6 +313,41 @@ function NeedCard({ need, rooms, drag, run, onPick, onEdit }: NeedCardProps) {
         </div>
       </div>
     </div>
+  )
+}
+
+// Titre du besoin (« Bureaux », « Table à manger »…) : il se change sur place, comme dans l'aperçu du book.
+// Vidé, il reprend le nom de la catégorie de l'article.
+function NeedTitle({ projectId, need, run }: { projectId: number; need: ProjectNeed; run(action: Promise<unknown>): Promise<void> }) {
+  const shown = need.label ?? need.category ?? 'Article'
+  const [value, setValue] = useState(shown)
+  useEffect(() => setValue(shown), [shown])
+  const save = () => {
+    const text = value.trim()
+    if (text === shown) return
+    if (!text && !need.label) return setValue(shown)
+    void run(window.mdeko.projects.editText(projectId, `needLabel:${need.id}`, text))
+  }
+  return (
+    <label className="need-title">
+      <input
+        aria-label="Nom du besoin"
+        value={value}
+        size={Math.max(8, value.length + 1)}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+          else if (e.key === 'Escape') {
+            setValue(shown)
+            e.currentTarget.blur()
+          }
+        }}
+        draggable={false}
+        onDragStart={(e) => e.preventDefault()}
+      />
+      <Icon name="pencil" size={12} />
+    </label>
   )
 }
 

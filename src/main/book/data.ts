@@ -46,6 +46,7 @@ function bookArticle(db: DatabaseSync, dataRoot: string, card: ArticleCard, need
     priceCents: card.price.cents,
     summable: card.price.cents !== null && (card.price.kind === 'fixed' || card.price.kind === 'from' || card.price.kind === 'unknown'),
     supplier: card.supplier,
+    description: card.description,
     url: a.url,
     image: images[0] ?? null,
     images
