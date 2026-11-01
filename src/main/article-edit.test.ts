@@ -11,6 +11,7 @@ import {
   restoreArticle,
   saveArticle,
   trashArticle,
+  trashArticles,
   UndoStack,
   uploadImage
 } from './article-edit'
@@ -48,6 +49,19 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'mdeko-edit-'))
 })
 afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+describe('corbeille en lot', () => {
+  it('met plusieurs articles à la corbeille, et un seul ⌘Z les fait tous revenir', () => {
+    const a = saveArticle(db, input({ name: 'Lampe' }), undo)
+    const b = saveArticle(db, input({ name: 'Table' }), undo)
+    trashArticles(db, [a, b], undo)
+    expect(listTrash(db).map((x) => x.id).sort()).toEqual([a, b].sort())
+    const entry = undo.pop()!
+    expect(entry.label).toMatch(/2 articles/)
+    entry.undo()
+    expect(listTrash(db)).toEqual([])
+  })
+})
 
 describe('enregistrement', () => {
   it('crée un article, son fournisseur et ses étiquettes, et le rend cherchable', () => {

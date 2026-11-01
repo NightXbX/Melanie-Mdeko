@@ -5,6 +5,7 @@ import type { Project, RenderMarker } from '@shared/projects'
 import { useApp } from '../../app-context'
 import { hasImages, readDrop, uploadDrop, type DropContent } from '../../lib/images'
 import { ArticleEditorSheet } from '../ArticleEditorSheet'
+import { CropSheet } from '../CropSheet'
 import { Icon } from '../Icon'
 import { ArticlePicker } from './ArticlePicker'
 
@@ -36,6 +37,7 @@ export function RenderViewer({
   const [selected, setSelected] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [dragging, setDragging] = useState(false)
+  const [cropping, setCropping] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -46,7 +48,7 @@ export function RenderViewer({
   // ← et → passent d'un rendu à l'autre, Échap ferme (sauf pendant le choix d'un article).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (pending || creating || (e.target as HTMLElement).closest('input, textarea')) return
+      if (pending || creating || cropping || (e.target as HTMLElement).closest('input, textarea')) return
       if (e.key === 'Escape') {
         if (marking) setMarking(false)
         else onClose()
@@ -55,7 +57,7 @@ export function RenderViewer({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [index, marking, pending, creating, project.renders.length, onClose, onIndex])
+  }, [index, marking, pending, creating, cropping, project.renders.length, onClose, onIndex])
 
   if (!render) return null
 
@@ -78,6 +80,13 @@ export function RenderViewer({
     } finally {
       setBusy(false)
     }
+  }
+
+  const crop = async (imageId: number) => {
+    await window.mdeko.projects.cropRender(render.id, imageId)
+    await reload()
+    setCropping(false)
+    notify('Le rendu a été rogné. L’image entière est gardée : « Rogner » permet d’y revenir.')
   }
 
   const place = async (articleId: number) => {
@@ -149,6 +158,10 @@ export function RenderViewer({
           </div>
           <div className="sheet-actions">
             {busy && <span className="editor-status">Remplacement…</span>}
+            <button type="button" className="button" onClick={() => setCropping(true)}>
+              <Icon name="crop" size={14} />
+              Rogner
+            </button>
             <button type="button" className="button" onClick={() => fileInput.current?.click()}>
               Remplacer l’image…
             </button>
@@ -256,6 +269,7 @@ export function RenderViewer({
           }}
         />
       )}
+      {cropping && <CropSheet imageId={render.imageId} bookRatio onDone={(img) => crop(img.id)} onCancel={() => setCropping(false)} />}
       <input
         ref={fileInput}
         type="file"

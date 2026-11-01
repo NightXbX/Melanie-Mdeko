@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import type { ProjectRender, RenderSection } from '@shared/projects'
 import { useApp } from '../../app-context'
 import { hasImages, readDrop, uploadDrop, type DropContent } from '../../lib/images'
+import { CropSheet } from '../CropSheet'
 import { Icon } from '../Icon'
 import { AiSheet } from './AiSheet'
 import type { SectionProps } from './ProjectEditor'
@@ -16,6 +17,7 @@ export function RendersSection({ project, reload }: SectionProps) {
   const [moving, setMoving] = useState<number | null>(null)
   const [retouching, setRetouching] = useState<number | null>(null)
   const [viewing, setViewing] = useState<number | null>(null)
+  const [cropping, setCropping] = useState<ProjectRender | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const insetFor = useRef<number | null>(null)
   const insetInput = useRef<HTMLInputElement>(null)
@@ -103,6 +105,10 @@ export function RendersSection({ project, reload }: SectionProps) {
                 </button>
                 <span className="render-number">{i + 1}</span>
                 {r.edited && <span className="render-edited">Retouché</span>}
+                <button type="button" className="thumb-crop" onClick={() => setCropping(r)}>
+                  <Icon name="crop" size={11} />
+                  Rogner
+                </button>
                 {r.markers.length > 0 && (
                   <span className="render-markers">
                     {r.markers.length} objet{r.markers.length > 1 ? 's' : ''} repéré{r.markers.length > 1 ? 's' : ''}
@@ -157,6 +163,19 @@ export function RendersSection({ project, reload }: SectionProps) {
           }}
           onClose={() => setViewing(null)}
           reload={reload}
+        />
+      )}
+      {cropping && (
+        <CropSheet
+          imageId={cropping.imageId}
+          bookRatio
+          onDone={async (img) => {
+            await window.mdeko.projects.cropRender(cropping.id, img.id)
+            await reload()
+            setCropping(null)
+            notify('Le rendu a été rogné. L’image entière est gardée : « Rogner » permet d’y revenir.')
+          }}
+          onCancel={() => setCropping(null)}
         />
       )}
       {retouching !== null && project.renders.some((r) => r.id === retouching) && (

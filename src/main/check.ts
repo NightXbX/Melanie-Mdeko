@@ -34,20 +34,21 @@ export function checkDatabase(db: DatabaseSync, paths: DataPaths, now = new Date
     if (found.total) groups.push({ ...g, count: found.total, articles: found.items })
   }
 
-  // Photos enregistrées en base dont le fichier n'est plus dans le dossier.
   const images = db.prepare('SELECT id, rel_path FROM images').all() as { id: number; rel_path: string }[]
-  const missing = images.filter((i) => !existsSync(join(paths.root, i.rel_path))).map((i) => i.id)
+  const missing = missingImages(images, paths)
+  const cond = conditions(missing, now)
+  const byId = (id: string) => articles(cond[id].where, ...cond[id].params)
+
   if (missing.length) {
-    const list = missing.slice(0, 900).join(', ')
     add(
       { id: 'missing-files', severity: 'error', title: 'Photos introuvables', description: `${missing.length} photo${missing.length > 1 ? 's' : ''} manque${missing.length > 1 ? 'nt' : ''} dans le dossier des données.` },
-      articles(`EXISTS (SELECT 1 FROM article_images ai WHERE ai.article_id = a.id AND ai.image_id IN (${list}))`)
+      byId('missing-files')
     )
   }
 
   add(
     { id: 'gone', severity: 'error', title: 'Produits disparus', description: 'Le lien ne mène plus au produit : il n’est sans doute plus vendu.' },
-    articles("a.link_status = 'gone'")
+    byId('gone')
   )
   add(
     { id: 'in-trash', severity: 'warning', title: 'Dans un projet mais à la corbeille', description: 'Ces articles sont encore proposés dans un design book.' },
@@ -65,25 +66,19 @@ export function checkDatabase(db: DatabaseSync, paths: DataPaths, now = new Date
   )
   add(
     { id: 'duplicates', severity: 'warning', title: 'Doublons possibles', description: 'Plusieurs articles mènent au même produit.' },
-    articles('a.url_clean IS NOT NULL AND EXISTS (SELECT 1 FROM articles b WHERE b.url_clean = a.url_clean AND b.id <> a.id AND b.deleted_at IS NULL)')
+    byId('duplicates')
   )
-  add(
-    { id: 'stale-price', severity: 'warning', title: 'Prix à revoir', description: 'Prix inchangé depuis plus d’un an.' },
-    articles('a.price_cents IS NOT NULL AND a.updated_at < ?', ago(365))
-  )
+  add({ id: 'stale-price', severity: 'warning', title: 'Prix à revoir', description: 'Prix inchangé depuis plus d’un an.' }, byId('stale-price'))
   add(
     { id: 'no-photo', severity: 'info', title: 'Sans photo', description: 'Ajoutez une photo pour qu’ils apparaissent bien dans le book.' },
-    articles('NOT EXISTS (SELECT 1 FROM article_images ai WHERE ai.article_id = a.id)')
+    byId('no-photo')
   )
-  add(
-    { id: 'no-price', severity: 'info', title: 'Sans prix', description: 'Ni prix, ni « sur devis ».' },
-    articles("a.price_cents IS NULL AND a.price_kind <> 'on_quote' AND a.price_text IS NULL")
-  )
-  add({ id: 'no-link', severity: 'info', title: 'Sans lien', description: 'Aucune adresse du produit.' }, articles('a.url IS NULL'))
-  add({ id: 'no-category', severity: 'info', title: 'Sans catégorie', description: 'Ils n’apparaissent dans aucun filtre.' }, articles('a.category_id IS NULL'))
+  add({ id: 'no-price', severity: 'info', title: 'Sans prix', description: 'Ni prix, ni « sur devis ».' }, byId('no-price'))
+  add({ id: 'no-link', severity: 'info', title: 'Sans lien', description: 'Aucune adresse du produit.' }, byId('no-link'))
+  add({ id: 'no-category', severity: 'info', title: 'Sans catégorie', description: 'Ils n’apparaissent dans aucun filtre.' }, byId('no-category'))
   add(
     { id: 'unverifiable', severity: 'info', title: 'Liens à vérifier à la main', description: 'Le site refuse les vérifications automatiques.' },
-    articles("a.link_status = 'unverifiable'")
+    byId('unverifiable')
   )
 
   const count = (sql: string, ...p: string[]) => (db.prepare(sql).get(...p) as { n: number }).n
@@ -108,6 +103,54 @@ export function checkDatabase(db: DatabaseSync, paths: DataPaths, now = new Date
     },
     groups
   }
+}
+
+// Photos enregistrées en base dont le fichier n'est plus dans le dossier.
+function missingImages(images: { id: number; rel_path: string }[], paths: DataPaths): number[] {
+  return images.filter((i) => !existsSync(join(paths.root, i.rel_path))).map((i) => i.id)
+}
+
+const DUPLICATE = 'a.url_clean IS NOT NULL AND EXISTS (SELECT 1 FROM articles b WHERE b.url_clean = a.url_clean AND b.id <> a.id AND b.deleted_at IS NULL)'
+
+// Condition SQL de chaque anomalie, sur les articles « a » qui ne sont pas à la corbeille.
+function conditions(missing: number[], now: Date): Record<string, { where: string; params: string[] }> {
+  const ago = (days: number) => new Date(now.getTime() - days * DAY).toISOString()
+  const c = (where: string, ...params: string[]) => ({ where, params })
+  return {
+    'missing-files': c(`EXISTS (SELECT 1 FROM article_images ai WHERE ai.article_id = a.id AND ai.image_id IN (${missing.slice(0, 900).join(', ') || 'NULL'}))`),
+    gone: c("a.link_status = 'gone'"),
+    duplicates: c(DUPLICATE),
+    'stale-price': c('a.price_cents IS NOT NULL AND a.updated_at < ?', ago(365)),
+    'no-photo': c('NOT EXISTS (SELECT 1 FROM article_images ai WHERE ai.article_id = a.id)'),
+    'no-price': c("a.price_cents IS NULL AND a.price_kind <> 'on_quote' AND a.price_text IS NULL"),
+    'no-link': c('a.url IS NULL'),
+    'no-category': c('a.category_id IS NULL'),
+    unverifiable: c("a.link_status = 'unverifiable'")
+  }
+}
+
+// Tous les articles d'une anomalie, pour les mettre à la corbeille d'un coup. Pour les doublons, on garde
+// un article par produit : celui d'un projet d'abord, puis celui qui a une photo, puis le plus ancien.
+export function checkGroupIds(db: DatabaseSync, paths: DataPaths, groupId: string, now = new Date()): number[] {
+  if (groupId === 'duplicates') {
+    const rows = db
+      .prepare(
+        `SELECT id FROM (
+           SELECT a.id, row_number() OVER (
+             PARTITION BY a.url_clean
+             ORDER BY EXISTS (SELECT 1 FROM need_articles na WHERE na.article_id = a.id) DESC,
+                      EXISTS (SELECT 1 FROM article_images ai WHERE ai.article_id = a.id) DESC, a.id
+           ) AS rank
+           FROM articles a WHERE a.deleted_at IS NULL AND ${DUPLICATE}
+         ) WHERE rank > 1`
+      )
+      .all() as { id: number }[]
+    return rows.map((r) => r.id)
+  }
+  const images = groupId === 'missing-files' ? (db.prepare('SELECT id, rel_path FROM images').all() as { id: number; rel_path: string }[]) : []
+  const c = conditions(missingImages(images, paths), now)[groupId]
+  if (!c) return []
+  return (db.prepare(`SELECT a.id FROM articles a WHERE a.deleted_at IS NULL AND (${c.where})`).all(...c.params) as { id: number }[]).map((r) => r.id)
 }
 
 // --- Vérification des liens en ligne ---------------------------------------------------------------

@@ -26,6 +26,7 @@ export interface ProjectRender {
   imageUrl: string
   thumbnailUrl: string
   insetUrl: string | null
+  insetImageId: number | null
   section: RenderSection
   caption: string | null
   edited: boolean // une version retouchée par l'assistant remplace l'original dans le book

@@ -8,6 +8,7 @@ import m005 from './005_quantites_options_tendance.sql?raw'
 import m006 from './006_teintes_reperes.sql?raw'
 import m007 from './007_description_article.sql?raw'
 import m008 from './008_homebyme_mail.sql?raw'
+import m009 from './009_rognage.sql?raw'
 
 export const SOURCES: Record<string, string> = {
   '001_schema_initial': m001,
@@ -17,5 +18,6 @@ export const SOURCES: Record<string, string> = {
   '005_quantites_options_tendance': m005,
   '006_teintes_reperes': m006,
   '007_description_article': m007,
-  '008_homebyme_mail': m008
+  '008_homebyme_mail': m008,
+  '009_rognage': m009
 }

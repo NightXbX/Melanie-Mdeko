@@ -7,6 +7,7 @@ import {
   type ArticleFilters,
   type ArticleInput,
   type ArticleQuery,
+  type CropSource,
   type DownloadedImage,
   type ImportSummary,
   type ImageUpload,
@@ -19,14 +20,18 @@ import {
   getArticleInput,
   listTrash,
   restoreArticle,
+  countInProjects,
   saveArticle,
   trashArticle,
+  trashArticles,
   UndoStack,
   uploadImage
 } from './article-edit'
 import { articleFacets, getArticle, searchArticles } from './articles'
 import { listBackups } from './backup'
-import { checkDatabase, checkLinks, type LinkResponse } from './check'
+import type { CropRect } from '@shared/crop'
+import { checkDatabase, checkGroupIds, checkLinks, type LinkResponse } from './check'
+import { cropSource, readImage, saveCrop } from './crop'
 import { importPdf } from './import'
 import { parseProductPage, type ProductInfo } from './product-page'
 import { schemaVersion } from './db/database'
@@ -70,6 +75,11 @@ export function registerIpc(db: DatabaseSync, paths: DataPaths, backupNow: () =>
     return { name: info.name, priceCents: info.priceCents, supplier: supplierFor(db, url) ?? info.siteName, description: info.description, imageUrls: info.imageUrls }
   })
   ipcMain.handle(IPC.trashArticle, (_e, id: number) => trashArticle(db, id, undo))
+  ipcMain.handle(IPC.trashArticles, (_e, ids: number[]) => trashArticles(db, ids, undo))
+  ipcMain.handle(IPC.countInProjects, (_e, ids: number[]) => countInProjects(db, ids))
+  ipcMain.handle(IPC.cropSource, (_e, imageId: number): CropSource => cropSource(db, imageId))
+  ipcMain.handle(IPC.readImage, (_e, imageId: number) => readImage(db, paths.root, imageId))
+  ipcMain.handle(IPC.saveCrop, (_e, sourceId: number, rect: CropRect, upload: ImageUpload | null) => saveCrop(db, paths.root, sourceId, rect, upload))
   ipcMain.handle(IPC.restoreArticle, (_e, id: number) => restoreArticle(db, id, undo))
   ipcMain.handle(IPC.listTrash, () => listTrash(db))
   ipcMain.handle(IPC.emptyTrash, () => emptyTrash(db, paths.root, undo))
@@ -103,6 +113,7 @@ export function registerIpc(db: DatabaseSync, paths: DataPaths, backupNow: () =>
 
   // Vérification de la base, et des liens en ligne (un passage à la fois, interruptible).
   ipcMain.handle(IPC.checkDatabase, () => checkDatabase(db, paths))
+  ipcMain.handle(IPC.checkGroupIds, (_e, groupId: string) => checkGroupIds(db, paths, groupId))
   ipcMain.handle(IPC.showDatabase, () => shell.showItemInFolder(paths.database))
   let linkCheck: { stop: boolean } | null = null
   ipcMain.handle(IPC.checkLinks, async (e) => {

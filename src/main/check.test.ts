@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { checkDatabase, checkLinks, linkStatusFor } from './check'
+import { checkDatabase, checkGroupIds, checkLinks, linkStatusFor } from './check'
 import { migrate, openDatabase } from './db/database'
 import type { DataPaths } from './paths'
 
@@ -42,6 +42,20 @@ describe('vérification de la base', () => {
     expect(ids('stale-price')).toEqual([3])
     expect(ids('no-photo')).toEqual([2])
     expect(report.links.toCheck).toBe(3)
+  })
+
+  it('donne tous les articles d’une anomalie, et garde un seul article par produit pour les doublons', () => {
+    const now = new Date('2026-10-29T00:00:00Z')
+    expect(checkGroupIds(db, paths, 'missing-files', now)).toEqual([3])
+    expect(checkGroupIds(db, paths, 'stale-price', now)).toEqual([3])
+    // Les deux mènent au même produit : on garde celui qui a une photo.
+    expect(checkGroupIds(db, paths, 'duplicates', now)).toEqual([2])
+    db.prepare('INSERT INTO projects (id, client_name) VALUES (1, ?)').run('Durand')
+    db.prepare('INSERT INTO needs (id, project_id) VALUES (1, 1)').run()
+    db.prepare("INSERT INTO need_articles (need_id, article_id, role) VALUES (1, 2, 'choice')").run()
+    // Celui d'un projet passe avant.
+    expect(checkGroupIds(db, paths, 'duplicates', now)).toEqual([1])
+    expect(checkGroupIds(db, paths, 'inconnu', now)).toEqual([])
   })
 
   it('reconnaît un produit disparu d’après la réponse du site', () => {

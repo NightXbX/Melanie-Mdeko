@@ -20,6 +20,7 @@ export function registerProjectsIpc(db: DatabaseSync, paths: DataPaths): void {
     updateRender: (_w, renderId, patch) => p.updateRender(db, renderId, patch),
     removeRender: (_w, renderId) => p.removeRender(db, renderId),
     replaceRenderImage: (_w, renderId, imageId) => p.replaceRenderImage(db, renderId, imageId),
+    cropRender: (_w, renderId, imageId) => p.cropRender(db, renderId, imageId),
     addMarker: (_w, renderId, articleId, x, y) => p.addMarker(db, renderId, articleId, x, y),
     moveMarker: (_w, markerId, x, y) => p.moveMarker(db, markerId, x, y),
     removeMarker: (_w, markerId) => p.removeMarker(db, markerId),

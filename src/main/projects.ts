@@ -13,7 +13,10 @@ import type {
 } from '@shared/projects'
 import { DEFAULT_MAIL_BODY, DEFAULT_MAIL_SUBJECT, DEFAULT_PAINT_BRAND } from '@shared/projects'
 import type { BookAdjustment } from '@shared/book'
+import { FULL, movePoint } from '@shared/crop'
+import { inTransaction } from './article-edit'
 import { CARD_COLUMNS, toCard } from './articles'
+import { cropInfo } from './crop'
 import { mediaUrl, thumbnailUrl } from './media-urls'
 
 type Row = Record<string, unknown>
@@ -137,7 +140,7 @@ export function setRooms(db: DatabaseSync, projectId: number, names: string[]): 
 function getRenders(db: DatabaseSync, projectId: number): ProjectRender[] {
   const rows = db
     .prepare(
-      `SELECT r.id, r.section, r.caption, i.id AS image_id, i.rel_path, i.sha256, ins.rel_path AS inset, v.id AS version
+      `SELECT r.id, r.section, r.caption, i.id AS image_id, i.rel_path, i.sha256, ins.rel_path AS inset, r.inset_image_id, v.id AS version
        FROM renders r LEFT JOIN render_versions v ON v.id = r.active_version_id
        JOIN images i ON i.id = coalesce(v.image_id, r.image_id) LEFT JOIN images ins ON ins.id = r.inset_image_id
        WHERE r.project_id = ? ORDER BY r.sort, r.id`
@@ -148,7 +151,7 @@ function getRenders(db: DatabaseSync, projectId: number): ProjectRender[] {
       `SELECT m.id AS marker_id, m.render_id, m.x, m.y, ${CARD_COLUMNS}
        FROM render_markers m JOIN renders r ON r.id = m.render_id JOIN articles a ON a.id = m.article_id
        LEFT JOIN suppliers s ON s.id = a.supplier_id
-       WHERE r.project_id = ? ORDER BY m.id`
+       WHERE r.project_id = ? AND m.x BETWEEN 0 AND 1 AND m.y BETWEEN 0 AND 1 ORDER BY m.id`
     )
     .all(projectId) as Row[]
   return rows.map((r) => ({
@@ -157,6 +160,7 @@ function getRenders(db: DatabaseSync, projectId: number): ProjectRender[] {
     imageUrl: mediaUrl(r.rel_path as string),
     thumbnailUrl: thumbnailUrl(r.sha256 as string),
     insetUrl: r.inset ? mediaUrl(r.inset as string) : null,
+    insetImageId: (r.inset_image_id as number | null) ?? null,
     section: r.section as RenderSection,
     caption: r.caption as string | null,
     edited: r.version !== null,
@@ -172,6 +176,31 @@ export function replaceRenderImage(db: DatabaseSync, renderId: number, imageId: 
   db.prepare('UPDATE renders SET image_id = ?, active_version_id = NULL WHERE id = ?').run(imageId, renderId)
   const r = db.prepare('SELECT project_id FROM renders WHERE id = ?').get(renderId) as { project_id: number } | undefined
   if (r) touch(db, r.project_id)
+}
+
+// Rendu rogné : l'image rognée remplace l'image montrée (la version retouchée gardée, sinon l'original).
+// Les repères suivent le cadre ; ceux qui en sortent sont cachés, et reviennent si on élargit le cadre.
+export function cropRender(db: DatabaseSync, renderId: number, imageId: number): void {
+  const r = db
+    .prepare(
+      `SELECT r.project_id, r.active_version_id, coalesce(v.image_id, r.image_id) AS shown
+       FROM renders r LEFT JOIN render_versions v ON v.id = r.active_version_id WHERE r.id = ?`
+    )
+    .get(renderId) as { project_id: number; active_version_id: number | null; shown: number } | undefined
+  if (!r || r.shown === imageId) return
+  const from = cropInfo(db, r.shown)
+  const to = cropInfo(db, imageId)
+  if (from.rootId !== to.rootId) throw new Error('Cette image ne vient pas de ce rendu.')
+  inTransaction(db, () => {
+    if (r.active_version_id !== null) db.prepare('UPDATE render_versions SET image_id = ? WHERE id = ?').run(imageId, r.active_version_id)
+    else db.prepare('UPDATE renders SET image_id = ? WHERE id = ?').run(imageId, renderId)
+    const markers = db.prepare('SELECT id, x, y FROM render_markers WHERE render_id = ?').all(renderId) as { id: number; x: number; y: number }[]
+    for (const m of markers) {
+      const p = movePoint(m.x, m.y, from.rect ?? FULL, to.rect ?? FULL)
+      db.prepare('UPDATE render_markers SET x = ?, y = ? WHERE id = ?').run(p.x, p.y, m.id)
+    }
+  })
+  touch(db, r.project_id)
 }
 
 // Repère d'un objet sur un rendu. Un article qui n'est pas encore dans le projet y devient un nouveau choix,

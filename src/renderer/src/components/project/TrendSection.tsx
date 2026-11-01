@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../../app-context'
 import { hasImages, readDrop, uploadDrop, type DropContent } from '../../lib/images'
 import { moved, useSortable } from '../../lib/sortable'
+import { CropSheet } from '../CropSheet'
 import { Icon } from '../Icon'
 import type { SectionProps } from './ProjectEditor'
 import { SectionHeader } from './sections'
@@ -13,6 +14,7 @@ export function TrendSection({ project, reload }: SectionProps) {
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [picking, setPicking] = useState(false)
+  const [cropping, setCropping] = useState<number | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const ids = project.trendImages.map((i) => i.id)
 
@@ -77,6 +79,10 @@ export function TrendSection({ project, reload }: SectionProps) {
             {project.trendImages.map((img) => (
               <div key={img.id} className="trend-photo" {...order.item(img.id)}>
                 <img src={img.url} alt="" draggable={false} />
+                <button type="button" className="thumb-crop" onClick={() => setCropping(img.id)}>
+                  <Icon name="crop" size={11} />
+                  Rogner
+                </button>
                 <button
                   type="button"
                   className="editor-thumb-remove"
@@ -91,6 +97,16 @@ export function TrendSection({ project, reload }: SectionProps) {
         </>
       )}
 
+      {cropping !== null && (
+        <CropSheet
+          imageId={cropping}
+          onDone={async (img) => {
+            await save([...new Set(ids.map((id) => (id === cropping ? img.id : id)))])
+            setCropping(null)
+          }}
+          onCancel={() => setCropping(null)}
+        />
+      )}
       {picking && (
         <InspirationPicker
           selected={ids}

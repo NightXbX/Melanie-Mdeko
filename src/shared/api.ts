@@ -1,5 +1,6 @@
 // Contrat entre le processus principal et l'interface (exposé via le preload).
 import type { BookAdjustment, Page } from './book'
+import type { CropRect } from './crop'
 import type {
   Artisan,
   BookFormat,
@@ -101,6 +102,8 @@ export interface ProjectsApi {
   updateRender(renderId: number, patch: { section?: RenderSection; insetImageId?: number | null; caption?: string | null }): Promise<void>
   removeRender(renderId: number): Promise<void>
   replaceRenderImage(renderId: number, imageId: number): Promise<void>
+  // Image rognée à la place de l'image montrée ; les repères suivent le cadre.
+  cropRender(renderId: number, imageId: number): Promise<void>
   addMarker(renderId: number, articleId: number, x: number, y: number): Promise<number>
   moveMarker(markerId: number, x: number, y: number): Promise<void>
   removeMarker(markerId: number): Promise<void>
@@ -240,6 +243,13 @@ export interface EditableImage {
   url: string
 }
 
+// Image montrée par l'outil de rognage : l'image d'origine entière, et le cadre déjà choisi (null : aucun).
+export interface CropSource {
+  id: number
+  url: string
+  crop: CropRect | null
+}
+
 export interface ArticleInput {
   id: number | null
   name: string
@@ -352,7 +362,13 @@ export interface MdekoApi {
   uploadImage(image: ImageUpload): Promise<EditableImage>
   downloadImage(url: string): Promise<DownloadedImage>
   readProductPage(url: string): Promise<ProductPrefill | null>
+  cropSource(imageId: number): Promise<CropSource>
+  readImage(imageId: number): Promise<{ bytes: Uint8Array; mimeType: string }>
+  // Image rognée enregistrée (upload : la zone découpée) ; le cadre entier redonne l'image d'origine.
+  saveCrop(sourceId: number, rect: CropRect, upload: ImageUpload | null): Promise<EditableImage>
   trashArticle(id: number): Promise<void>
+  trashArticles(ids: number[]): Promise<void> // une seule annulation (⌘Z) pour tous
+  countInProjects(ids: number[]): Promise<number>
   restoreArticle(id: number): Promise<void>
   listTrash(): Promise<ArticleCard[]>
   emptyTrash(): Promise<{ deleted: number; keptInProjects: number }>
@@ -363,6 +379,8 @@ export interface MdekoApi {
   onImportProgress(listener: (page: number, total: number) => void): () => void
   pathForFile(file: File): string
   checkDatabase(): Promise<CheckReport>
+  // Tous les articles d'une anomalie (pas seulement ceux affichés) ; pour les doublons, tous sauf un par produit.
+  checkGroupIds(groupId: string): Promise<number[]>
   checkLinks(): Promise<LinkCheckProgress>
   stopLinkCheck(): Promise<void>
   onLinkProgress(listener: (progress: LinkCheckProgress) => void): () => void
@@ -388,7 +406,12 @@ export const IPC = {
   uploadImage: 'images:upload',
   downloadImage: 'images:download',
   readProductPage: 'articles:read-product-page',
+  cropSource: 'images:crop-source',
+  readImage: 'images:read',
+  saveCrop: 'images:save-crop',
   trashArticle: 'articles:trash',
+  trashArticles: 'articles:trash-many',
+  countInProjects: 'articles:count-in-projects',
   restoreArticle: 'articles:restore',
   listTrash: 'articles:list-trash',
   emptyTrash: 'articles:empty-trash',
@@ -398,6 +421,7 @@ export const IPC = {
   importPdf: 'import:pdf',
   importProgress: 'import:progress',
   checkDatabase: 'check:database',
+  checkGroupIds: 'check:group-ids',
   checkLinks: 'check:links',
   stopLinkCheck: 'check:stop-links',
   linkProgress: 'check:link-progress',
@@ -415,7 +439,7 @@ export const IPC = {
 export const PROJECT_METHODS = [
   'list', 'create', 'get', 'update', 'trash', 'restore', 'setRooms', 'addRenders', 'updateRender', 'removeRender',
   'reorder', 'addNeed', 'setNeedRoom', 'setNeedChoice', 'setNeedAlternatives', 'setNeedImages', 'removeNeed', 'setNeedQuantity', 'setTrendImages', 'listInspirationImages', 'listPaints', 'createPaint',
-  'updatePaint', 'deletePaint', 'countPaintProjects', 'updatePaintBrand', 'replaceRenderImage', 'addMarker', 'moveMarker', 'removeMarker',
+  'updatePaint', 'deletePaint', 'countPaintProjects', 'updatePaintBrand', 'replaceRenderImage', 'cropRender', 'addMarker', 'moveMarker', 'removeMarker',
   'listArtisans', 'saveArtisan', 'setLinks', 'getSettings', 'saveSettings', 'pages', 'editText', 'addNote', 'moveNote',
   'deleteNote', 'adjust', 'resetPage', 'export', 'prepareMail', 'openFolder'
 ] as const satisfies readonly (keyof ProjectsApi)[]

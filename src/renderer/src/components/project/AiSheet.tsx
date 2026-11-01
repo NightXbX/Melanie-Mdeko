@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { AiMark, AiProposal, AiStatus, AiVersion, EditableImage } from '@shared/api'
+import { FULL, movePoint } from '@shared/crop'
 import type { ProjectRender } from '@shared/projects'
 import { useApp, useUndoHandler } from '../../app-context'
 import { hasImages, readDrop, uploadDrop } from '../../lib/images'
 import { isMove } from '../../lib/sortable'
+import { CropSheet } from '../CropSheet'
 import { Icon } from '../Icon'
 import { ArticlePicker } from './ArticlePicker'
 import { MarkupLayer, strokesToPng, type Stroke } from './MarkupLayer'
@@ -39,11 +41,30 @@ export function AiSheet({ render, onClose, onChanged }: { render: ProjectRender;
   const [marks, setMarks] = useState<Record<string, Stroke[]>>({})
   const [drawing, setDrawing] = useState(false)
   const [markingRef, setMarkingRef] = useState<EditableImage | null>(null)
+  const [croppingRef, setCroppingRef] = useState(false)
   const ratios = useRef<Record<string, number>>({}) // hauteur / largeur de chaque image annotée
   const fileInput = useRef<HTMLInputElement>(null)
   const stageImage = useRef<HTMLImageElement>(null)
 
   const setStrokes = (key: string, strokes: Stroke[]) => setMarks((m) => ({ ...m, [key]: strokes }))
+
+  // Image de référence rognée : elle prend la place de l'ancienne, et ses traits suivent le cadre.
+  const replaceRef = async (old: EditableImage, img: EditableImage) => {
+    const [from, to] = await Promise.all([window.mdeko.cropSource(old.id), window.mdeko.cropSource(img.id)])
+    const moved = (marks[String(old.id)] ?? []).map((s) =>
+      s.map(([x, y]) => {
+        const p = movePoint(x, y, from.crop ?? FULL, to.crop ?? FULL)
+        return [p.x, p.y] as [number, number]
+      })
+    )
+    setMarks((m) => {
+      const { [String(old.id)]: _, ...rest } = m
+      return { ...rest, [String(img.id)]: moved }
+    })
+    setRefs((r) => r.map((x) => (x.id === old.id ? img : x)).filter((x, n, all) => all.findIndex((y) => y.id === x.id) === n))
+    setMarkingRef(img)
+    setCroppingRef(false)
+  }
   // ⌘Z retire le dernier trait de l'image qu'on est en train d'annoter.
   const markingKey = markingRef ? String(markingRef.id) : drawing ? 'render' : null
   useUndoHandler(() => {
@@ -340,6 +361,10 @@ export function AiSheet({ render, onClose, onChanged }: { render: ProjectRender;
                       Effacer les traits
                     </button>
                   )}
+                  <button type="button" className="button" onClick={() => setCroppingRef(true)}>
+                    <Icon name="crop" size={14} />
+                    Rogner
+                  </button>
                   <button type="button" className="button button-primary" onClick={() => setMarkingRef(null)}>
                     Terminé
                   </button>
@@ -352,6 +377,9 @@ export function AiSheet({ render, onClose, onChanged }: { render: ProjectRender;
                 onChange={(st) => setStrokes(String(markingRef.id), st)}
               />
             </div>
+            {croppingRef && (
+              <CropSheet imageId={markingRef.id} onDone={(img) => replaceRef(markingRef, img)} onCancel={() => setCroppingRef(false)} />
+            )}
           </div>
         )}
         {picking && (

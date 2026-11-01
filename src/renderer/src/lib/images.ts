@@ -1,4 +1,5 @@
 import type { EditableImage, ImageUpload } from '@shared/api'
+import { FULL, cropPixels, isFull, type CropRect } from '@shared/crop'
 
 const THUMBNAIL_SIZE = 360
 
@@ -77,4 +78,20 @@ export async function uploadDrop(drop: DropContent): Promise<EditableImage[]> {
     uploaded.push(await window.mdeko.uploadImage(await toUpload(blob, name)))
   }
   return uploaded
+}
+
+// Découpe le cadre choisi dans l'image d'origine, en pleine définition, et l'enregistre comme image rognée.
+// Même format que l'original (JPEG de bonne qualité, PNG ou WebP) ; le cadre entier redonne l'original.
+export async function cropImage(sourceId: number, rect: CropRect): Promise<EditableImage> {
+  if (isFull(rect)) return window.mdeko.saveCrop(sourceId, FULL, null)
+  const { bytes, mimeType } = await window.mdeko.readImage(sourceId)
+  const bitmap = await createImageBitmap(new Blob([bytes as BlobPart], { type: mimeType }))
+  const { sx, sy, sw, sh } = cropPixels(rect, bitmap.width, bitmap.height)
+  const canvas = new OffscreenCanvas(sw, sh)
+  const ctx = canvas.getContext('2d')!
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, sw, sh)
+  const type = mimeType === 'image/jpeg' || mimeType === 'image/webp' ? mimeType : 'image/png'
+  const blob = await canvas.convertToBlob({ type, quality: 0.95 })
+  return window.mdeko.saveCrop(sourceId, rect, await toUpload(blob))
 }

@@ -5,6 +5,7 @@ import { normalizeUrlInput } from '@shared/url'
 import { hasImages, readDrop, uploadDrop, type DropContent } from '../lib/images'
 import { useViewActive } from '../lib/keep-alive'
 import { moved, useSortable } from '../lib/sortable'
+import { CropSheet } from './CropSheet'
 import { Icon } from './Icon'
 import { SAVE_EVENT } from './SaveButton'
 
@@ -50,6 +51,7 @@ export function ArticleEditor({ articleId, initialDrop, initial, onClose }: Prop
   const [saving, setSaving] = useState(false)
   const [reading, setReading] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [cropping, setCropping] = useState<number | null>(null)
   const active = useViewActive()
   const latest = useRef({ form, priceText })
   latest.current = { form, priceText }
@@ -190,6 +192,14 @@ export function ArticleEditor({ articleId, initialDrop, initial, onClose }: Prop
   }
 
   const setMainImage = (img: EditableImage) => form && update({ images: [img, ...form.images.filter((i) => i.id !== img.id)] })
+  // La photo rognée prend la place de l'ancienne (l'original reste gardé pour rogner à nouveau).
+  const replaceImage = (oldId: number, img: EditableImage) =>
+    form &&
+    update({
+      images: form.images
+        .map((i) => (i.id === oldId ? img : i))
+        .filter((i, n, all) => all.findIndex((x) => x.id === i.id) === n)
+    })
   const removeImage = (img: EditableImage) => form && update({ images: form.images.filter((i) => i.id !== img.id) })
 
   // Les photos se rangent en les faisant glisser ; la première est la photo principale.
@@ -259,6 +269,9 @@ export function ArticleEditor({ articleId, initialDrop, initial, onClose }: Prop
               <div key={img.id} className={`detail-thumb editor-thumb${i === 0 ? ' is-selected' : ''}`} {...photoOrder.item(img.id)}>
                 <button type="button" className="editor-thumb-main" title="Photo principale" onClick={() => setMainImage(img)}>
                   <img src={img.url} alt="" draggable={false} />
+                </button>
+                <button type="button" className="thumb-crop" aria-label="Rogner la photo" title="Rogner" onClick={() => setCropping(img.id)}>
+                  <Icon name="crop" size={12} />
                 </button>
                 <button type="button" className="editor-thumb-remove" aria-label="Retirer la photo" onClick={() => removeImage(img)}>
                   <Icon name="xmark" size={10} />
@@ -423,6 +436,16 @@ export function ArticleEditor({ articleId, initialDrop, initial, onClose }: Prop
       <datalist id="mdeko-tags">
         {choices?.tags.map((t) => <option key={t} value={t} />)}
       </datalist>
+      {cropping !== null && (
+        <CropSheet
+          imageId={cropping}
+          onDone={(img) => {
+            replaceImage(cropping, img)
+            setCropping(null)
+          }}
+          onCancel={() => setCropping(null)}
+        />
+      )}
     </form>
   )
 }

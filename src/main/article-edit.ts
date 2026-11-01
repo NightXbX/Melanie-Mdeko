@@ -15,6 +15,7 @@ const MAX_IMAGE_BYTES = 40 * 1024 * 1024
 export interface UndoEntry {
   label: string
   articleId: number
+  articleIds?: number[] // annulation qui porte sur plusieurs articles
   undo(): void
 }
 
@@ -34,7 +35,7 @@ export class UndoStack {
   // Après une suppression définitive, ces articles ne peuvent plus être annulés.
   forget(articleIds: number[]): void {
     const gone = new Set(articleIds)
-    this.entries = this.entries.filter((e) => !gone.has(e.articleId))
+    this.entries = this.entries.filter((e) => !gone.has(e.articleId) && !e.articleIds?.some((id) => gone.has(id)))
   }
 }
 
@@ -157,10 +158,12 @@ function writeArticle(db: DatabaseSync, input: ArticleInput): number {
       )
     }
   }
+  const previousImages = (db.prepare('SELECT image_id FROM article_images WHERE article_id = ?').all(id) as { image_id: number }[]).map((r) => r.image_id)
   db.prepare('DELETE FROM article_images WHERE article_id = ?').run(id)
   input.images.forEach((img, sort) =>
     db.prepare('INSERT OR IGNORE INTO article_images (article_id, image_id, sort) VALUES (?, ?, ?)').run(id, img.id, sort)
   )
+  followCrops(db, id, previousImages, input.images.map((i) => i.id))
   db.prepare('DELETE FROM article_tags WHERE article_id = ?').run(id)
   for (const tag of new Set(input.tags.map((t) => t.trim()).filter(Boolean))) {
     db.prepare('INSERT OR IGNORE INTO article_tags (article_id, tag_id) VALUES (?, ?)').run(id, tagId(db, tag))
@@ -169,7 +172,7 @@ function writeArticle(db: DatabaseSync, input: ArticleInput): number {
   return id
 }
 
-function inTransaction<T>(db: DatabaseSync, work: () => T): T {
+export function inTransaction<T>(db: DatabaseSync, work: () => T): T {
   db.exec('BEGIN')
   try {
     const result = work()
@@ -212,6 +215,28 @@ export function trashArticle(db: DatabaseSync, id: number, undo: UndoStack): voi
   undo.push({ label: `« ${name} » est revenu dans la shopping list`, articleId: id, undo: () => setDeleted(db, id, null) })
 }
 
+// Plusieurs articles à la corbeille d'un coup (écran Vérification) : un seul ⌘Z les fait tous revenir.
+export function trashArticles(db: DatabaseSync, ids: number[], undo: UndoStack): void {
+  const live = ids.filter((id) => db.prepare('SELECT 1 FROM articles WHERE id = ? AND deleted_at IS NULL').get(id))
+  if (!live.length) return
+  if (live.length === 1) return trashArticle(db, live[0], undo)
+  const at = now()
+  inTransaction(db, () => live.forEach((id) => setDeleted(db, id, at)))
+  undo.push({
+    label: `${live.length} articles sont revenus dans la shopping list`,
+    articleId: live[0],
+    articleIds: live,
+    undo: () => inTransaction(db, () => live.forEach((id) => setDeleted(db, id, null)))
+  })
+}
+
+// Combien de ces articles sont proposés dans un projet (ils y restent même à la corbeille).
+export function countInProjects(db: DatabaseSync, ids: number[]): number {
+  if (!ids.length) return 0
+  const list = ids.filter(Number.isInteger).join(', ')
+  return (db.prepare(`SELECT count(DISTINCT article_id) AS n FROM need_articles WHERE article_id IN (${list})`).get() as { n: number }).n
+}
+
 export function restoreArticle(db: DatabaseSync, id: number, undo: UndoStack): void {
   const r = db.prepare('SELECT name, deleted_at FROM articles WHERE id = ?').get(id) as { name: string; deleted_at: string }
   setDeleted(db, id, null)
@@ -252,9 +277,29 @@ export function emptyTrash(db: DatabaseSync, dataRoot: string, undo: UndoStack):
   return { deleted: ids.length, keptInProjects: trashed.length - ids.length }
 }
 
+// Une photo rognée remplace l'ancienne dans la fiche : les photos retenues pour « Mon choix » la suivent.
+function followCrops(db: DatabaseSync, articleId: number, before: number[], after: number[]): void {
+  const rootOf = (id: number) => (db.prepare('SELECT coalesce(crop_of, id) AS r FROM images WHERE id = ?').get(id) as { r: number } | undefined)?.r
+  for (const old of before.filter((id) => !after.includes(id))) {
+    const next = after.find((id) => !before.includes(id) && rootOf(id) === rootOf(old))
+    if (next === undefined) continue
+    db.prepare(
+      `UPDATE OR IGNORE need_images SET image_id = ? WHERE image_id = ?
+         AND need_id IN (SELECT need_id FROM need_articles WHERE article_id = ? AND role = 'choice')`
+    ).run(next, old, articleId)
+  }
+}
+
 // Supprime les photos que plus rien n'utilise (fichier, miniature et ligne).
-// Toute nouvelle table qui référence images doit être ajoutée ici.
+// Toute nouvelle table qui référence images doit être ajoutée ici. Une image d'origine reste tant qu'une
+// image rognée à partir d'elle est utilisée : on recommence donc jusqu'à ce qu'il n'y ait plus rien à supprimer.
 export function purgeOrphanImages(db: DatabaseSync, dataRoot: string): number {
+  let total = 0
+  for (let n = purgeOnce(db, dataRoot); n > 0; n = purgeOnce(db, dataRoot)) total += n
+  return total
+}
+
+function purgeOnce(db: DatabaseSync, dataRoot: string): number {
   const orphans = db
     .prepare(
       `SELECT i.id, i.rel_path, i.sha256 FROM images i
@@ -266,6 +311,7 @@ export function purgeOrphanImages(db: DatabaseSync, dataRoot: string): number {
          AND NOT EXISTS (SELECT 1 FROM paints x WHERE x.image_id = i.id)
          AND NOT EXISTS (SELECT 1 FROM need_images x WHERE x.image_id = i.id)
          AND NOT EXISTS (SELECT 1 FROM project_trend_images x WHERE x.image_id = i.id)
+         AND NOT EXISTS (SELECT 1 FROM images x WHERE x.crop_of = i.id)
          AND i.id NOT IN (SELECT CAST(value AS INTEGER) FROM settings WHERE key LIKE '%image_id')`
     )
     .all() as { id: number; rel_path: string; sha256: string | null }[]

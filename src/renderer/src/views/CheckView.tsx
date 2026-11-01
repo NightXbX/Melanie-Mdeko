@@ -1,22 +1,28 @@
 import { useEffect, useState } from 'react'
-import type { CheckReport, LinkCheckProgress } from '@shared/api'
+import type { ArticleCard as Card, CheckGroup, CheckReport, LinkCheckProgress } from '@shared/api'
 import { useApp } from '../app-context'
 import { ArticleCard } from '../components/ArticleCard'
 import { ArticleEditorSheet } from '../components/ArticleEditorSheet'
+import { Icon } from '../components/Icon'
 import { Toolbar } from '../components/Toolbar'
 
 const SEVERITY = { error: 'À corriger', warning: 'À regarder', info: 'Pour compléter' }
 
 const size = (bytes: number) => (bytes > 1e6 ? `${(bytes / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} Mo` : `${Math.ceil(bytes / 1e3)} Ko`)
 
+const plural = (n: number, one: string, many: string) => `${n.toLocaleString('fr-FR')} ${n > 1 ? many : one}`
+
 // Bilan de santé de la shopping list : fichier de la base, articles incomplets, en double, disparus ou pas à jour.
-// Un clic sur un article ouvre sa fiche pour le corriger.
+// Un clic sur un article ouvre sa fiche pour le corriger. On peut aussi mettre à la corbeille un article,
+// une sélection ou toute une anomalie d'un coup (un seul ⌘Z les fait revenir).
 export function CheckView() {
   const { dataVersion, refresh, notify } = useApp()
   const [report, setReport] = useState<CheckReport | null>(null)
   const [open, setOpen] = useState<string | null>(null)
   const [editing, setEditing] = useState<number | null>(null)
   const [links, setLinks] = useState<LinkCheckProgress | null>(null)
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     void window.mdeko.checkDatabase().then(setReport)
@@ -38,6 +44,61 @@ export function CheckView() {
       refresh()
     }
   }
+
+  // Met des articles à la corbeille après confirmation ; ceux d'un projet y restent proposés.
+  const trash = async (ids: number[], question: string, detail: string) => {
+    if (!ids.length || busy) return
+    const inProjects = await window.mdeko.countInProjects(ids)
+    const note = inProjects
+      ? ids.length === 1
+        ? ' Il est proposé dans un projet : il y restera.'
+        : ` ${plural(inProjects, 'est proposé', 'sont proposés')} dans un projet : ils y resteront.`
+      : ''
+    const ok = await window.mdeko.confirm(question, detail + note, 'Mettre à la corbeille')
+    if (!ok) return
+    setBusy(true)
+    try {
+      await window.mdeko.trashArticles(ids)
+      setSelected((s) => new Set([...s].filter((id) => !ids.includes(id))))
+      refresh()
+      notify(ids.length === 1 ? 'L’article a été mis à la corbeille' : `${plural(ids.length, 'article', 'articles')} mis à la corbeille`, true)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const trashOne = (a: Card) => trash([a.id], `Mettre « ${a.name} » à la corbeille ?`, 'Vous pourrez le récupérer depuis la Corbeille.')
+
+  const trashSelection = () =>
+    trash(
+      [...selected],
+      `Mettre ${plural(selected.size, 'article', 'articles')} à la corbeille ?`,
+      'Vous pourrez les récupérer depuis la Corbeille, ou annuler tout de suite avec ⌘Z.'
+    )
+
+  const trashGroup = async (g: CheckGroup) => {
+    const ids = await window.mdeko.checkGroupIds(g.id)
+    if (g.id === 'duplicates') {
+      return trash(
+        ids,
+        'Garder un seul article par produit ?',
+        `${plural(ids.length, 'doublon ira', 'doublons iront')} à la corbeille. Pour chaque produit, on garde celui qui est dans un projet, sinon celui qui a une photo.`
+      )
+    }
+    return trash(
+      ids,
+      `Mettre à la corbeille ${ids.length > 1 ? `les ${ids.length.toLocaleString('fr-FR')} articles` : 'l’article'} « ${g.title} » ?`,
+      'Vous pourrez les récupérer depuis la Corbeille, ou annuler tout de suite avec ⌘Z.'
+    )
+  }
+
+  const toggle = (id: number) =>
+    setSelected((s) => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
 
   if (!report) return <Toolbar title="Vérification" />
   const db = report.database
@@ -112,15 +173,62 @@ export function CheckView() {
             </button>
             {open === g.id && (
               <>
+                {g.id !== 'in-trash' && (
+                  <div className="check-group-actions">
+                    {(() => {
+                      const all = g.articles.every((a) => selected.has(a.id))
+                      return (
+                        <button
+                          type="button"
+                          className="button button-plain"
+                          onClick={() =>
+                            setSelected((s) => {
+                              const next = new Set(s)
+                              for (const a of g.articles) {
+                                if (all) next.delete(a.id)
+                                else next.add(a.id)
+                              }
+                              return next
+                            })
+                          }
+                        >
+                          {all ? 'Tout désélectionner' : g.count > g.articles.length ? `Sélectionner les ${g.articles.length} affichés` : 'Tout sélectionner'}
+                        </button>
+                      )
+                    })()}
+                    <button type="button" className="button button-danger" disabled={busy} onClick={() => void trashGroup(g)}>
+                      <Icon name="trash" size={14} />
+                      {g.id === 'duplicates' ? 'Garder un seul article par produit' : g.count > 1 ? `Tout mettre à la corbeille (${g.count.toLocaleString('fr-FR')})` : 'Mettre à la corbeille'}
+                    </button>
+                  </div>
+                )}
                 <div className="grid">
                   {g.articles.map((a) => (
-                    <ArticleCard
-                      key={a.id}
-                      article={a}
-                      onOpen={(id) =>
-                        g.id === 'in-trash' ? notify('Remettez-le dans la shopping list depuis la corbeille, ou retirez-le du projet.') : setEditing(id)
-                      }
-                    />
+                    <div key={a.id} className={`check-card${selected.has(a.id) ? ' is-selected' : ''}${selected.size ? ' is-selecting' : ''}`}>
+                      <ArticleCard
+                        article={a}
+                        onOpen={(id) =>
+                          g.id === 'in-trash' ? notify('Remettez-le dans la shopping list depuis la corbeille, ou retirez-le du projet.') : setEditing(id)
+                        }
+                      />
+                      {g.id !== 'in-trash' && (
+                        <>
+                          <label className="check-select" title="Sélectionner">
+                            <input type="checkbox" checked={selected.has(a.id)} onChange={() => toggle(a.id)} aria-label={`Sélectionner « ${a.name} »`} />
+                          </label>
+                          <button
+                            type="button"
+                            className="check-trash"
+                            title="Mettre à la corbeille"
+                            aria-label={`Mettre « ${a.name} » à la corbeille`}
+                            disabled={busy}
+                            onClick={() => void trashOne(a)}
+                          >
+                            <Icon name="trash" size={14} />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   ))}
                 </div>
                 {g.count > g.articles.length && <p className="section-note">Les {g.articles.length} premiers sont affichés.</p>}
@@ -129,6 +237,18 @@ export function CheckView() {
           </section>
         ))}
       </div>
+      {selected.size > 0 && (
+        <div className="check-selection">
+          <span>{plural(selected.size, 'article sélectionné', 'articles sélectionnés')}</span>
+          <button type="button" className="button button-plain" onClick={() => setSelected(new Set())}>
+            Tout désélectionner
+          </button>
+          <button type="button" className="button button-danger" disabled={busy} onClick={() => void trashSelection()}>
+            <Icon name="trash" size={14} />
+            Mettre la sélection à la corbeille
+          </button>
+        </div>
+      )}
       {editing !== null && <ArticleEditorSheet articleId={editing} onClose={() => setEditing(null)} />}
     </>
   )
