@@ -11,7 +11,7 @@ import type {
   ProjectSummary,
   RenderSection
 } from '@shared/projects'
-import { DEFAULT_MAIL_BODY, DEFAULT_MAIL_SUBJECT, DEFAULT_PAINT_BRAND } from '@shared/projects'
+import { DEFAULT_MAIL_BODY, DEFAULT_MAIL_SUBJECT, DEFAULT_PAINT_BRAND, QUOTE_HIDDEN_PAGES, type DocumentKind } from '@shared/projects'
 import type { BookAdjustment } from '@shared/book'
 import { FULL, movePoint } from '@shared/crop'
 import { inTransaction } from './article-edit'
@@ -32,7 +32,7 @@ export const projectTitle = (title: string | null, name: string) => [title, name
 export function listProjects(db: DatabaseSync): ProjectSummary[] {
   const rows = db
     .prepare(
-      `SELECT p.id, p.client_title, p.client_name, p.book_date, p.updated_at,
+      `SELECT p.id, p.client_title, p.client_name, p.book_date, p.updated_at, p.kind,
          (SELECT i.sha256 FROM renders r JOIN images i ON i.id = r.image_id
            WHERE r.project_id = p.id ORDER BY r.sort LIMIT 1) AS cover
        FROM projects p WHERE p.deleted_at IS NULL ORDER BY p.updated_at DESC`
@@ -43,18 +43,22 @@ export function listProjects(db: DatabaseSync): ProjectSummary[] {
     title: projectTitle(r.client_title as string | null, r.client_name as string),
     bookDate: r.book_date as string | null,
     coverUrl: r.cover ? thumbnailUrl(r.cover as string) : null,
-    updatedAt: r.updated_at as string
+    updatedAt: r.updated_at as string,
+    kind: r.kind as DocumentKind
   }))
 }
 
-export function createProject(db: DatabaseSync, clientTitle: string, clientName: string): number {
+// Un devis montre l'adresse du client en couverture et commence sans sommaire ni pages de présentation.
+export function createProject(db: DatabaseSync, clientTitle: string, clientName: string, kind: DocumentKind = 'book'): number {
   if (!clientName.trim()) throw new Error('Le nom du client est obligatoire.')
   const month = now().slice(0, 7)
-  return Number(
+  const id = Number(
     db
-      .prepare('INSERT INTO projects (client_title, client_name, book_date) VALUES (?, ?, ?)')
-      .run(clientTitle.trim() || null, clientName.trim(), month).lastInsertRowid
+      .prepare('INSERT INTO projects (client_title, client_name, book_date, kind, cover_address) VALUES (?, ?, ?, ?, ?)')
+      .run(clientTitle.trim() || null, clientName.trim(), month, kind, kind === 'quote' ? 1 : 0).lastInsertRowid
   )
+  if (kind === 'quote') for (const key of QUOTE_HIDDEN_PAGES) setPageHidden(db, id, key, true)
+  return id
 }
 
 export function updateProject(db: DatabaseSync, id: number, patch: ProjectPatch): void {
@@ -67,6 +71,12 @@ export function updateProject(db: DatabaseSync, id: number, patch: ProjectPatch)
   if (patch.bookDate !== undefined) columns.push(['book_date', patch.bookDate])
   if (patch.showPrices !== undefined) columns.push(['show_prices', patch.showPrices ? 1 : 0])
   if (patch.groupSingleChoices !== undefined) columns.push(['group_single_choices', patch.groupSingleChoices ? 1 : 0])
+  if (patch.coverAddress !== undefined) columns.push(['cover_address', patch.coverAddress ? 1 : 0])
+  if (patch.kind !== undefined) {
+    // Passer en devis retire les pages de présentation ; revenir au design book les remet.
+    columns.push(['kind', patch.kind])
+    for (const key of QUOTE_HIDDEN_PAGES) setPageHidden(db, id, key, patch.kind === 'quote')
+  }
   if (patch.texts) {
     columns.push(['intro_text', patch.texts.intro], ['wishes_text', patch.texts.wishes], ['closing_text', patch.texts.closing])
   }
@@ -110,6 +120,8 @@ export function getProject(db: DatabaseSync, id: number): Project | null {
     artisanIds: ids('SELECT artisan_id AS id FROM project_artisans WHERE project_id = ? ORDER BY sort'),
     showPrices: p.show_prices !== 0,
     groupSingleChoices: p.group_single_choices === 1,
+    kind: p.kind as DocumentKind,
+    coverAddress: p.cover_address === 1,
     trendImages: (
       db
         .prepare('SELECT i.id, i.rel_path FROM project_trend_images t JOIN images i ON i.id = t.image_id WHERE t.project_id = ? ORDER BY t.sort')
@@ -698,4 +710,15 @@ export function resetPageAdjustments(db: DatabaseSync, projectId: number, pageKe
   db.prepare(`${RESET} WHERE project_id = ? AND page_key = ?`).run(projectId, pageKey)
   db.prepare('DELETE FROM book_adjustments WHERE project_id = ? AND page_key = ? AND text IS NULL').run(projectId, pageKey)
   touch(db, projectId)
+}
+
+// Page retirée du book (ou remise) : ses textes et ajustements sont gardés.
+export function setPageHidden(db: DatabaseSync, projectId: number, pageKey: string, hidden: boolean): void {
+  if (hidden) db.prepare('INSERT OR IGNORE INTO book_hidden_pages (project_id, page_key) VALUES (?, ?)').run(projectId, pageKey)
+  else db.prepare('DELETE FROM book_hidden_pages WHERE project_id = ? AND page_key = ?').run(projectId, pageKey)
+  touch(db, projectId)
+}
+
+export function listHiddenPages(db: DatabaseSync, projectId: number): string[] {
+  return (db.prepare('SELECT page_key FROM book_hidden_pages WHERE project_id = ?').all(projectId) as { page_key: string }[]).map((r) => r.page_key)
 }

@@ -13,6 +13,7 @@ export interface ProjectSummary {
   bookDate: string | null // AAAA-MM
   coverUrl: string | null
   updatedAt: string
+  kind: DocumentKind
 }
 
 export interface Room {
@@ -78,6 +79,14 @@ export interface ProjectTexts {
   closing: string | null
 }
 
+// Design book complet, ou devis : même mise en page, « DEVIS » en couverture et sans les pages de présentation.
+export type DocumentKind = 'book' | 'quote'
+
+export const DOCUMENT_NAMES: Record<DocumentKind, string> = { book: 'Design book', quote: 'Devis' }
+
+// Pages retirées d'un devis à sa création (elles se remettent d'un clic dans l'aperçu).
+export const QUOTE_HIDDEN_PAGES = ['toc', 'intro', 'wishes', 'artisans', 'closing']
+
 export interface Project {
   id: number
   clientTitle: string
@@ -94,13 +103,15 @@ export interface Project {
   artisanIds: number[]
   showPrices: boolean // prix affichés dans le design book
   groupSingleChoices: boolean // choix sans autre proposition regroupés sur une même page
+  kind: DocumentKind
+  coverAddress: boolean // adresse du client sous son nom, sur la couverture
   trendImages: { id: number; url: string }[] // planche tendance (aucune photo : pas de planche)
   homebymeUrl: string | null // dernier lien HomeByMe importé
   mailedAt: string | null // dernier mail préparé pour envoyer le book
 }
 
 export type ProjectPatch = Partial<
-  Pick<Project, 'clientTitle' | 'clientName' | 'address' | 'phone' | 'email' | 'bookDate' | 'showPrices' | 'groupSingleChoices'> & { texts: ProjectTexts }
+  Pick<Project, 'clientTitle' | 'clientName' | 'address' | 'phone' | 'email' | 'bookDate' | 'showPrices' | 'groupSingleChoices' | 'kind' | 'coverAddress'> & { texts: ProjectTexts }
 >
 
 // Réglages de Mélanie : coordonnées et textes modèles (dans ses données, jamais dans le code).

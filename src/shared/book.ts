@@ -56,6 +56,7 @@ export type Element = Common &
 export interface Page {
   key: string // identifie la page pour y rattacher annotations et ajustements (« cover », « render:12 »…)
   elements: Element[]
+  hidden?: boolean // retirée par Mélanie : montrée grisée dans l'aperçu, ni exportée ni numérotée
 }
 
 // Ajustement fait dans l'aperçu : position et taille (mm), taille du texte (pt), texte remplacé.

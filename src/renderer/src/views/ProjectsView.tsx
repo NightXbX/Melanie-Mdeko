@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import type { ProjectSummary } from '@shared/projects'
+import type { DocumentKind, ProjectSummary } from '@shared/projects'
 import { useApp } from '../app-context'
 import { Icon } from '../components/Icon'
 import { ProjectEditor } from '../components/project/ProjectEditor'
@@ -28,7 +28,7 @@ export function ProjectsView({ newProjectSignal, openRequest, onImport }: Props)
   const { dataVersion } = useApp()
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null)
   const [openId, setOpenId] = useState<number | null>(null)
-  const [creating, setCreating] = useState(false)
+  const [creating, setCreating] = useState<DocumentKind | null>(null)
 
   useEffect(() => {
     void window.mdeko.projects.list().then(setProjects)
@@ -42,7 +42,7 @@ export function ProjectsView({ newProjectSignal, openRequest, onImport }: Props)
   useEffect(() => {
     if (newProjectSignal) {
       setOpenId(null)
-      setCreating(true)
+      setCreating('book')
     }
   }, [newProjectSignal])
 
@@ -54,7 +54,11 @@ export function ProjectsView({ newProjectSignal, openRequest, onImport }: Props)
         <button type="button" className="button" onClick={() => onImport()}>
           Importer…
         </button>
-        <button type="button" className="button button-primary" onClick={() => setCreating(true)}>
+        <button type="button" className="button" onClick={() => setCreating('quote')}>
+          <Icon name="plus" size={14} />
+          Nouveau devis
+        </button>
+        <button type="button" className="button button-primary" onClick={() => setCreating('book')}>
           <Icon name="plus" size={14} />
           Nouveau projet
         </button>
@@ -73,7 +77,7 @@ export function ProjectsView({ newProjectSignal, openRequest, onImport }: Props)
       >
         {projects?.length === 0 && (
           <div className="projects-grid">
-            <button type="button" className="project-card project-new" onClick={() => setCreating(true)}>
+            <button type="button" className="project-card project-new" onClick={() => setCreating('book')}>
               <div className="project-cover">
                 <Icon name="plus" size={36} />
               </div>
@@ -89,7 +93,7 @@ export function ProjectsView({ newProjectSignal, openRequest, onImport }: Props)
                 <button key={p.id} type="button" className="project-card" onClick={() => setOpenId(p.id)}>
                   <div className="project-cover">{p.coverUrl ? <img src={p.coverUrl} alt="" /> : <Icon name="folder" size={36} />}</div>
                   <span className="project-title">{p.title}</span>
-                  <span className="project-date">{monthLabel(p.bookDate)}</span>
+                  <span className="project-date">{p.kind === 'quote' ? `Devis · ${monthLabel(p.bookDate)}` : monthLabel(p.bookDate)}</span>
                 </button>
               ))}
             </div>
@@ -98,9 +102,10 @@ export function ProjectsView({ newProjectSignal, openRequest, onImport }: Props)
       </div>
       {creating && (
         <NewProjectSheet
-          onCancel={() => setCreating(false)}
+          kind={creating}
+          onCancel={() => setCreating(null)}
           onCreated={(id) => {
-            setCreating(false)
+            setCreating(null)
             setOpenId(id)
           }}
         />
@@ -109,20 +114,20 @@ export function ProjectsView({ newProjectSignal, openRequest, onImport }: Props)
   )
 }
 
-function NewProjectSheet({ onCancel, onCreated }: { onCancel(): void; onCreated(id: number): void }) {
+function NewProjectSheet({ kind, onCancel, onCreated }: { kind: DocumentKind; onCancel(): void; onCreated(id: number): void }) {
   const [title, setTitle] = useState('Mme')
   const [name, setName] = useState('')
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
-    onCreated(await window.mdeko.projects.create(title, name))
+    onCreated(await window.mdeko.projects.create(title, name, kind))
   }
 
   return (
     <div className="sheet-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
       <form className="sheet" onSubmit={submit} onKeyDown={(e) => e.key === 'Escape' && onCancel()}>
-        <h2>Nouveau projet</h2>
+        <h2>{kind === 'quote' ? 'Nouveau devis' : 'Nouveau projet'}</h2>
         <div className="field-row field-row-narrow">
           <label className="field">
             <span>Civilité</span>
@@ -143,7 +148,7 @@ function NewProjectSheet({ onCancel, onCreated }: { onCancel(): void; onCreated(
             Annuler
           </button>
           <button type="submit" className="button button-primary" disabled={!name.trim()}>
-            Créer le projet
+            {kind === 'quote' ? 'Créer le devis' : 'Créer le projet'}
           </button>
         </div>
       </form>

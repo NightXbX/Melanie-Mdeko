@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { DEFAULT_PAINT_BRAND, type Artisan, type Paint } from '@shared/projects'
+import { DEFAULT_PAINT_BRAND, DOCUMENT_NAMES, type Artisan, type DocumentKind, type Paint } from '@shared/projects'
 import { useApp } from '../../app-context'
 import { useAutosave } from '../../lib/autosave'
 import { moved, useSortable } from '../../lib/sortable'
@@ -71,7 +71,37 @@ export function ClientSection({ project, reload, onDeleted }: SectionProps & { o
       </div>
       {field('address', 'Adresse')}
       {field('email', 'E-mail', 'email')}
-      <p className="section-note">Les coordonnées du client restent dans l’appli : elles n’apparaissent pas dans le design book.</p>
+      <label className="filter-check">
+        <input
+          type="checkbox"
+          checked={project.coverAddress}
+          onChange={(e) => void window.mdeko.projects.update(project.id, { coverAddress: e.target.checked }).then(reload)}
+        />
+        <span>Afficher l’adresse du client sur la couverture</span>
+      </label>
+      <p className="section-note">Le téléphone et l’e-mail du client restent dans l’appli : ils n’apparaissent jamais dans le document.</p>
+
+      <div className="field">
+        <span>Document</span>
+        <div className="segmented">
+          {(['book', 'quote'] as DocumentKind[]).map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              className={`button${project.kind === kind ? ' is-active' : ''}`}
+              onClick={() => project.kind !== kind && void window.mdeko.projects.update(project.id, { kind }).then(reload)}
+            >
+              {DOCUMENT_NAMES[kind]}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="section-note">
+        {project.kind === 'quote'
+          ? 'Le devis porte « DEVIS » en couverture et commence sans sommaire, avant-propos, envies, artisans ni « C’est à vous ».'
+          : 'Le design book contient toutes les pages.'}{' '}
+        Dans l’aperçu, chaque page peut être retirée ou remise.
+      </p>
       <button type="button" className="button button-danger section-danger" onClick={() => void remove()}>
         Supprimer le projet…
       </button>

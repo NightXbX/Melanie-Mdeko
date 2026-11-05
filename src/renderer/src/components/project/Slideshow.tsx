@@ -16,7 +16,7 @@ export function Slideshow({ projectId, onClose }: { projectId: number; onClose()
   const hideTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   useEffect(() => {
-    void window.mdeko.projects.pages(projectId).then(setPages)
+    void window.mdeko.projects.pages(projectId).then((all) => setPages(all.filter((p) => !p.hidden)))
   }, [projectId])
 
   const close = useCallback(() => {

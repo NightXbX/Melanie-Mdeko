@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react'
 import { PAGE_SIZE, type BookAdjustment, type Box, type Element, type Page } from '@shared/book'
+import { useUndoHandler } from '../../app-context'
+import { useViewActive } from '../../lib/keep-alive'
 import { Icon } from '../Icon'
 
 const CSS_PX_PER_MM = 96 / 25.4
@@ -29,6 +31,7 @@ export function BookPreview({ projectId, version, onChanged }: Props) {
   const [focusKey, setFocusKey] = useState<string | null>(null)
   const [selected, setSelected] = useState<Selection>(null)
   const [live, setLive] = useState<Live>(null) // position pendant un déplacement, jusqu'au rechargement
+  const removed = useRef<string[]>([]) // pages retirées depuis l'ouverture, pour ⌘Z
   const panel = useRef<HTMLDivElement>(null)
 
   const load = async () => {
@@ -90,6 +93,22 @@ export function BookPreview({ projectId, version, onChanged }: Props) {
     await changed()
   }
 
+  // Retirer une page ne supprime rien : elle reste grisée dans l'aperçu et se remet d'un clic (ou ⌘Z).
+  const setHidden = async (pageKey: string, hidden: boolean) => {
+    if (hidden) removed.current.push(pageKey)
+    else removed.current = removed.current.filter((k) => k !== pageKey)
+    setSelected(null)
+    await window.mdeko.projects.setPageHidden(projectId, pageKey, hidden)
+    await changed()
+  }
+
+  useUndoHandler(() => {
+    const last = removed.current.at(-1)
+    if (!last) return false
+    void setHidden(last, false)
+    return true
+  }, useViewActive())
+
   const adjust = async (pageKey: string, e: Element, patch: BookAdjustment | null) => {
     await window.mdeko.projects.adjust(projectId, pageKey, e.id!, patch)
     await changed()
@@ -141,6 +160,23 @@ export function BookPreview({ projectId, version, onChanged }: Props) {
     <div className="book-preview" ref={panel}>
       <p className="preview-help">Cliquez sur un texte pour l’écrire, faites glisser une image ou un texte pour le déplacer.</p>
       {pages.map((page) => {
+        if (page.hidden) {
+          return (
+            <div key={page.key} className="preview-page is-hidden" style={{ width: PAGE_SIZE.width * scale, height: PAGE_SIZE.height * scale }}>
+              <div className="preview-sheet" style={{ transform: `scale(${scale / CSS_PX_PER_MM})` }}>
+                {page.elements.map((el, i) => (
+                  <PreviewElement key={el.id ?? i} element={el} readOnly onSave={() => undefined} onDeleteNote={() => undefined} />
+                ))}
+              </div>
+              <div className="pv-hidden-banner">
+                <span>Page retirée : elle ne sera pas dans le document.</span>
+                <button type="button" className="button" onClick={() => void setHidden(page.key, false)}>
+                  Remettre la page
+                </button>
+              </div>
+            </div>
+          )
+        }
         const sel = selected?.pageKey === page.key ? selected.element : null
         const selBox = sel && (live?.key === keyOf(page.key, sel) ? live.box : sel)
         const hasAdjustments = page.elements.some((e) => e.adjusted)
@@ -215,6 +251,16 @@ export function BookPreview({ projectId, version, onChanged }: Props) {
                 )}
               </div>
             )}
+            <button
+              type="button"
+              className="pv-remove-page"
+              onMouseDown={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => e.stopPropagation()}
+              onClick={() => void setHidden(page.key, true)}
+            >
+              <Icon name="trash" size={12} />
+              Retirer la page
+            </button>
             {hasAdjustments && (
               <button
                 type="button"

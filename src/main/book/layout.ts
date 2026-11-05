@@ -1,4 +1,5 @@
 import { textKey, type BookAdjustment, type Box, type Element, type ImageRef, type Page, type Run, type TextStyle } from '@shared/book'
+import type { DocumentKind } from '@shared/projects'
 import { BOTTOM, COLORS, MARGIN, PAGE, RENDER, TEXT_BLOCK, WATERMARK } from './charte'
 
 export type { Element, ImageRef, Page }
@@ -37,7 +38,9 @@ export interface BookNote {
 }
 
 export interface BookData {
+  kind: DocumentKind // design book ou devis
   clientLabel: string // « Mme Durand »
+  clientAddress: string // vide : pas d'adresse sur la couverture
   dateLabel: string // « Septembre 2026 »
   designerName: string
   address: string
@@ -59,6 +62,7 @@ export interface BookData {
   notes: BookNote[]
   // Ajustements faits dans l'aperçu, par « <page>|<élément> ».
   adjustments: Record<string, BookAdjustment>
+  hiddenPages: string[] // clés des pages retirées par Mélanie
 }
 
 type TextElement = Extract<Element, { type: 'text' }>
@@ -141,39 +145,65 @@ function dividerPage(title: string, n: string, key: string): Page {
   }
 }
 
-// Couverture : m·deko en grand au centre, le client et la date en bas.
+// Couverture : m·deko en grand au centre, le client et la date en bas (« DEVIS » au lieu de « DESIGN BOOK »
+// pour un devis). En option, l'adresse du client sous son nom : le bloc remonte un peu pour lui faire place.
 function coverPage(d: BookData): Page {
-  return {
-    key: 'cover',
-    elements: [
-      text({ x: 48.5, y: 66, w: 200, h: 7 }, 'DESIGN BOOK', { size: 11, weight: 400, color: COLORS.taupeDark, align: 'center', letterSpacing: 6 }, { id: 'title' }),
-      logo({ x: 28.5, y: 78, w: 240, h: 36 }, 80, 'center', 'logo'),
-      line(138.5, 160, 20, COLORS.taupe, 0.3),
-      text({ x: 28.5, y: 166, w: 240, h: 10 }, d.clientLabel, { size: 18, align: 'center', valign: 'middle', lineHeight: 1 }, { id: 'client' }),
-      text({ x: 48.5, y: 177, w: 200, h: 7 }, d.dateLabel, { size: 12, weight: 300, color: COLORS.textSoft, align: 'center', valign: 'middle' }, { id: 'date' })
-    ]
+  const lines = d.clientAddress.split('\n').filter((l) => l.trim()).slice(0, 3)
+  const top = 160 - 4 * lines.length
+  const address = lines.length ? 5.5 * lines.length + 2 : 0
+  const elements: Element[] = [
+    text({ x: 48.5, y: 66, w: 200, h: 7 }, d.kind === 'quote' ? 'DEVIS' : 'DESIGN BOOK', { size: 11, weight: 400, color: COLORS.taupeDark, align: 'center', letterSpacing: 6 }, { id: 'title' }),
+    logo({ x: 28.5, y: 78, w: 240, h: 36 }, 80, 'center', 'logo'),
+    line(138.5, top, 20, COLORS.taupe, 0.3),
+    text({ x: 28.5, y: top + 6, w: 240, h: 10 }, d.clientLabel, { size: 18, align: 'center', valign: 'middle', lineHeight: 1 }, { id: 'client' })
+  ]
+  if (lines.length) {
+    elements.push(text({ x: 48.5, y: top + 17, w: 200, h: 5.5 * lines.length }, lines.join('\n'), { size: 11, weight: 300, align: 'center', lineHeight: 1.4 }, { id: 'address' }))
   }
+  elements.push(
+    text({ x: 48.5, y: top + 17 + address, w: 200, h: 7 }, d.dateLabel, { size: 12, weight: 300, color: COLORS.textSoft, align: 'center', valign: 'middle' }, { id: 'date' })
+  )
+  return { key: 'cover', elements }
 }
 
-// 4e de couverture : grand disque taupe avec le logo et les coordonnées, QR code « avis » posé sur son bord.
+// 4e de couverture : à gauche le logo, le nom et les coordonnées en lignes étiquetées ; à droite un bandeau
+// taupe sur toute la hauteur, avec le QR code « avis » dans une carte blanche (sans QR code : le logo en clair).
 function backCover(d: BookData): Page {
-  const cx = 117.5
-  const cy = 108.5
-  const r = 83
-  const column = { x: 56, w: 92 } // colonne de texte, un peu à gauche du centre du disque
-  const lines = [d.address, d.phone, d.email].filter(Boolean).join('\n')
+  const panel = { x: 192, w: 105 }
+  const center = panel.x + panel.w / 2
   const elements: Element[] = [
-    { type: 'ellipse', x: cx - r, y: cy - r, w: 2 * r, h: 2 * r, fill: COLORS.disc, id: 'disc' },
-    logo({ ...column, y: 66, h: 26 }, 58, 'center', 'logo', { m: COLORS.discLogo, deko: '#2E2E2E' }, 300),
-    text({ ...column, y: 99, h: 9 }, d.designerName, { size: 17, weight: 300, color: '#2E2E2E', align: 'center', valign: 'middle' }, { id: 'name' }),
-    text({ x: column.x - 4, w: column.w + 8, y: 109.5, h: 40 }, lines, { size: 13, weight: 300, color: '#2E2E2E', align: 'center', lineHeight: 1.7 }, { id: 'contact' })
+    { type: 'rect', x: panel.x, y: 0, w: panel.w, h: PAGE.height, fill: COLORS.disc, id: 'panel' },
+    logo({ x: 32, y: 46, w: 140, h: 26 }, 58, 'left', 'logo'),
+    line(33, 80, 20, COLORS.taupe, 0.3),
+    text({ x: 32, y: 86, w: 140, h: 9 }, d.designerName, { size: 17, weight: 300, valign: 'middle' }, { id: 'name' }),
+    text({ x: 32, y: 96, w: 140, h: 6 }, 'DÉCORATION D’INTÉRIEUR', { size: 8, weight: 400, color: COLORS.taupeDark, letterSpacing: 2 }, { id: 'role' })
   ]
-  if (d.reviewQr) {
+  const contacts = (
+    [
+      ['address', 'Adresse', d.address],
+      ['phone', 'Téléphone', d.phone],
+      ['email', 'E-mail', d.email]
+    ] as const
+  ).filter(([, , value]) => value.trim())
+  let y = 122
+  for (const [id, title, value] of contacts) {
+    const rows = Math.min(3, value.trim().split('\n').length)
     elements.push(
-      text({ x: 160, y: 74, w: 70, h: 8 }, 'Laisser un avis :', { size: 13, weight: 300, valign: 'middle' }, { id: 'review' }),
-      { type: 'rect', x: 160, y: 85, w: 54.5, h: 57.5, fill: COLORS.white, id: 'qr-frame' },
-      fitted(d.reviewQr, { x: 162.5, y: 87.5, w: 49.5, h: 52.5 }, 'qr')
+      text({ x: 32, y, w: 140, h: 5 }, title.toUpperCase(), { size: 7.5, weight: 500, color: COLORS.taupeDark, letterSpacing: 2 }, { id: `${id}-label` }),
+      text({ x: 32, y: y + 5, w: 140, h: 6 * rows }, value.trim(), { size: 12, weight: 300, lineHeight: 1.35 }, { id })
     )
+    y += 14 + 6 * (rows - 1)
+  }
+  if (d.reviewQr) {
+    const card = { x: center - 30, y: 68, w: 60, h: 60 }
+    elements.push(
+      text({ x: panel.x + 10, y: 54, w: panel.w - 20, h: 6 }, 'VOTRE AVIS COMPTE', { size: 8.5, weight: 500, color: COLORS.discText, align: 'center', letterSpacing: 3 }, { id: 'review-label' }),
+      { type: 'rect', ...card, fill: COLORS.white, id: 'qr-frame' },
+      fitted(d.reviewQr, { x: card.x + 4, y: card.y + 4, w: card.w - 8, h: card.h - 8 }, 'qr'),
+      text({ x: panel.x + 12, y: 134, w: panel.w - 24, h: 14 }, 'Scannez ce code pour laisser un avis', { size: 11, weight: 300, color: COLORS.discText, align: 'center', lineHeight: 1.4 }, { id: 'review' })
+    )
+  } else {
+    elements.push(logo({ x: panel.x, y: 92, w: panel.w, h: 26 }, 44, 'center', 'panel-logo', { m: COLORS.discLogo, deko: COLORS.white }, 300))
   }
   return { key: 'back', elements }
 }
@@ -663,16 +693,31 @@ export function buildBook(d: BookData): Page[] {
     divider: false
   })
 
-  // Intercalaires numérotés comme le sommaire, puis numérotation : couverture = 1, sommaire = 2.
+  // Pages retirées par Mélanie : gardées (grisées dans l'aperçu) mais ni comptées ni au sommaire. Une section
+  // dont toutes les pages sont retirées disparaît, son intercalaire avec.
+  const hidden = new Set(d.hiddenPages)
+  const shown = (p: Page) => !hidden.has(p.key)
+  const mark = (p: Page): Page => (shown(p) ? p : { ...p, hidden: true })
+
+  // Intercalaires numérotés comme le sommaire. Leur clé suit l'ordre de toutes les sections (elle ne change
+  // pas quand une autre est retirée), leur numéro celui des sections montrées.
+  let shownSections = 0
   sections.forEach((s, i) => {
-    if (s.divider) s.pages.unshift(dividerPage(s.title, two(i + 1), `section:${i + 1}`))
+    if (!s.pages.some(shown)) return
+    shownSections++
+    if (s.divider) s.pages.unshift(dividerPage(s.title, two(shownSections), `section:${i + 1}`))
   })
-  let page = 3
+
+  // Numérotation des pages montrées : couverture = 1, puis le sommaire s'il est gardé.
+  const cover = coverPage(d)
+  let page = [cover.key, 'toc'].filter((k) => !hidden.has(k)).length + 1
   const toc: { range: string; title: string }[] = []
   for (const s of sections) {
+    const count = s.pages.filter(shown).length
+    if (!count) continue
     const first = page
-    page += s.pages.length
-    toc.push({ range: s.pages.length > 1 ? `${first}-${page - 1}.` : `${first}.`, title: s.title })
+    page += count
+    toc.push({ range: count > 1 ? `${first}-${page - 1}.` : `${first}.`, title: s.title })
   }
 
   const tocPage: Page = {
@@ -686,13 +731,23 @@ export function buildBook(d: BookData): Page[] {
     })
   }
 
-  const pages: Page[] = [coverPage(d), tocPage, ...sections.flatMap((s) => s.pages), backCover(d)]
-  return pages.map((p, i) => {
-    const plain = i === 0 || i === pages.length - 1 || p.key.startsWith('section:') || p.key.startsWith('room:')
+  // Les sections vides (toutes leurs pages retirées) restent dans l'aperçu, sans intercalaire.
+  const pages: Page[] = [cover, tocPage, ...sections.flatMap((s) => s.pages), backCover(d)].map(mark)
+  let number = 0
+  return pages.map((p) => {
+    if (!p.hidden) number++
+    const plain = p.key === 'cover' || p.key === 'back' || p.key.startsWith('section:') || p.key.startsWith('room:')
     const notes = d.notes.filter((n) => n.pageKey === p.key).map(note)
     const adjusted = applyAdjustments(p, d.adjustments)
-    return { key: p.key, elements: [...adjusted.elements, ...(plain ? [] : footer(i + 1)), ...notes] }
+    return {
+      key: p.key,
+      elements: [...adjusted.elements, ...(plain || p.hidden ? [] : footer(number)), ...notes],
+      ...(p.hidden ? { hidden: true } : {})
+    }
   })
 }
+
+// Pages réellement exportées (PDF, PowerPoint, diaporama).
+export const exportedPages = (pages: Page[]) => pages.filter((p) => !p.hidden)
 
 export { PAGE }

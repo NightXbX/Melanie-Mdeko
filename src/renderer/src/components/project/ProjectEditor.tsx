@@ -61,9 +61,9 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
       const file = await window.mdeko.projects.export(projectId, format)
       if (!file) return
       const where = file.split(/[\\/]/).slice(-3, -1).join(' › ')
-      notify(`Design book enregistré dans ${where}`)
+      notify(`${project?.kind === 'quote' ? 'Devis enregistré' : 'Design book enregistré'} dans ${where}`)
     } catch (e) {
-      notify(`Le design book n’a pas pu être créé : ${(e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`)
+      notify(`${project?.kind === 'quote' ? 'Le devis' : 'Le design book'} n’a pas pu être créé : ${(e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`)
     } finally {
       setBusy(false)
     }

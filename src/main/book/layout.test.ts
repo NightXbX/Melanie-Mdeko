@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Element, Page } from '@shared/book'
 import { bookHtml, exported } from './html'
-import { buildBook, type BookArticle, type BookData } from './layout'
+import { buildBook, exportedPages, type BookArticle, type BookData } from './layout'
 
 const img = { url: 'mdeko://media/x.jpg', path: '/x.jpg', width: 1600, height: 900 }
 let nextId = 1
@@ -19,7 +19,9 @@ const article = (name: string, cents: number | null, summable = true): BookArtic
 })
 
 const data = (over: Partial<BookData> = {}): BookData => ({
+  kind: 'book',
   clientLabel: 'Mme Durand',
+  clientAddress: '',
   dateLabel: 'Octobre 2026',
   designerName: 'Mélanie Exemple',
   address: '1 rue Exemple',
@@ -44,6 +46,7 @@ const data = (over: Partial<BookData> = {}): BookData => ({
   artisans: [{ trade: 'Peintre', name: 'Atelier', city: 'Lille', phone: '01' }],
   notes: [],
   adjustments: {},
+  hiddenPages: [],
   ...over
 })
 
@@ -233,12 +236,46 @@ describe('design book', () => {
     expect(textsOf(pages[1]).slice(0, 2)).toEqual(['3-4.', 'Planche tendance'])
   })
 
-  it('pose la 4e de couverture dans un grand disque taupe', () => {
+  it('pose la 4e de couverture : coordonnées étiquetées et QR code sur un bandeau taupe', () => {
     const back = buildBook(data({ reviewQr: img })).at(-1)!
-    const disc = back.elements.find((e) => e.id === 'disc')!
-    expect(disc.type).toBe('ellipse')
-    expect(disc.h).toBeGreaterThan(150)
-    expect(textsOf(back)).toEqual(expect.arrayContaining(['Mélanie Exemple', 'Laisser un avis :']))
+    const panel = back.elements.find((e) => e.id === 'panel')!
+    expect(panel.type).toBe('rect')
+    expect(panel.h).toBe(210)
+    const qr = back.elements.find((e) => e.id === 'qr')!
+    expect(qr.x).toBeGreaterThan(panel.x)
+    expect(textsOf(back)).toEqual(expect.arrayContaining(['Mélanie Exemple', 'ADRESSE', '1 rue Exemple', 'E-MAIL', 'VOTRE AVIS COMPTE']))
+    // Sans QR code, le bandeau garde le logo.
+    expect(buildBook(data()).at(-1)!.elements.some((e) => e.id === 'panel-logo')).toBe(true)
+  })
+
+  it('montre l’adresse du client sur la couverture, en option', () => {
+    const cover = buildBook(data({ clientAddress: '12 rue des Lilas\n59000 Lille' }))[0]
+    expect(textsOf(cover)).toEqual(['DESIGN BOOK', 'm·deko', 'Mme Durand', '12 rue des Lilas\n59000 Lille', 'Octobre 2026'])
+    const date = cover.elements.find((e) => e.id === 'date')!
+    expect(date.y + date.h).toBeLessThan(200)
+  })
+
+  it('titre un devis « DEVIS »', () => {
+    expect(textsOf(buildBook(data({ kind: 'quote' }))[0])[0]).toBe('DEVIS')
+  })
+
+  it('garde les pages retirées hors de l’export, de la numérotation et du sommaire', () => {
+    const all = buildBook(data({ hiddenPages: ['intro', 'wishes', 'artisans', 'closing'] }))
+    expect(all).toHaveLength(16)
+    expect(all.filter((p) => p.hidden).map((p) => p.key)).toEqual(['intro', 'wishes', 'artisans', 'closing'])
+    const pages = exportedPages(all)
+    expect(pages).toHaveLength(12)
+    // Plans dès la page 3, intercalaires renumérotés.
+    expect(textsOf(pages[1]).slice(0, -1)).toEqual(['3-5.', 'Plans d’aménagement intérieur', '6-9.', 'Shopping list', '10-11.', 'Teintes et couleurs'])
+    expect(textsOf(byKey(pages, 'section:3'))[0]).toBe('—  01  —')
+    expect(textsOf(pages[3]).at(-1)).toContain('4')
+  })
+
+  it('sans sommaire, numérote à partir de la couverture ; une section toute retirée perd son intercalaire', () => {
+    const pages = exportedPages(buildBook(data({ hiddenPages: ['toc', 'paints:1'] })))
+    expect(pages.map((p) => p.key)).not.toContain('toc')
+    expect(pages.some((p) => textsOf(p).includes('TEINTES ET COULEURS'))).toBe(false)
+    expect(textsOf(byKey(pages, 'intro')).at(-1)).toContain('2')
   })
 
   it('omet les sections vides', () => {

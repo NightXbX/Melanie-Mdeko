@@ -2,7 +2,7 @@ import type { Weight } from '@shared/book'
 
 // Charte des design books m·deko (style Contemporain, le seul conservé).
 // Toutes les mesures sont en millimètres sur une page A4 paysage ; les tailles de texte en points.
-// Fond blanc, filets fins, pas d'aplats, sauf le disque de la 4e de couverture et les échantillons de teintes.
+// Fond blanc, filets fins, pas d'aplats, sauf le bandeau de la 4e de couverture et les échantillons de teintes.
 
 export { PAGE_SIZE as PAGE } from '@shared/book'
 
@@ -10,8 +10,9 @@ export const COLORS = {
   taupe: '#BFB6A3', // « m » du logo, filets marqués
   taupeLight: '#CCC7B9', // filets, cadres
   taupeDark: '#9C927E', // petites étiquettes : même teinte, assez foncée pour rester lisible
-  disc: '#BCAD8F', // disque de la 4e de couverture
-  discLogo: '#D3CABA', // « m » du logo posé sur le disque
+  disc: '#BCAD8F', // bandeau de la 4e de couverture
+  discLogo: '#D3CABA', // « m » du logo posé sur le bandeau
+  discText: '#2E2E2E', // textes posés sur le bandeau
   text: '#1F1F1F',
   textSoft: '#6B6660',
   white: '#FFFFFF',

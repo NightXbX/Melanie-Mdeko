@@ -2037,6 +2037,55 @@ img.pv {
   opacity: 1;
 }
 
+/* Retirer une page du document (en haut à droite, au survol) */
+.pv-remove-page {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--separator);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.92);
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.preview-page:hover .pv-remove-page {
+  opacity: 1;
+}
+
+/* Page retirée : grisée, avec de quoi la remettre */
+.preview-page.is-hidden {
+  cursor: default;
+  box-shadow: none;
+  outline: 1px dashed rgba(0, 0, 0, 0.25);
+}
+
+.preview-page.is-hidden .preview-sheet {
+  opacity: 0.25;
+  filter: grayscale(1);
+}
+
+.pv-hidden-banner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
 /* Vérification de la base */
 
 .check {

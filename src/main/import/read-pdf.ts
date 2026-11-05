@@ -245,14 +245,16 @@ function readTable(mupdf: MupdfModule, d: PageData, section: string, cols: numbe
 
 export function readCover(d: PageData): Cover | null {
   const texts = d.lines.map((l) => l.text.split(/\s+/).filter(Boolean).join(' '))
-  if (!texts.some((t) => t.toLowerCase() === 'design book')) return null
+  // « DESIGN BOOK », ou « DEVIS » pour un devis exporté par Mdeko.
+  const isTitle = (t: string) => ['design book', 'devis'].includes(t.toLowerCase())
+  if (!texts.some(isTitle)) return null
   let bookDate: string | null = null
   for (const t of texts) {
     const m = /^(\p{L}+)\s+(\d{4})$/u.exec(t)
     const month = m ? MONTHS.indexOf(cle(m[1])) : -1
     if (m && month >= 0) bookDate = `${m[2]}-${String(month + 1).padStart(2, '0')}`
   }
-  const client = texts.find((t) => t.toLowerCase() !== 'design book' && t.includes(' ') && !/\d{4}$/.test(t)) ?? ''
+  const client = texts.find((t) => !isTitle(t) && t.includes(' ') && !/\d{4}$/.test(t)) ?? ''
   const couple = /^(?:Mme\s*(?:&|et)\s*(?:M\.?|Mr)|(?:M\.?|Mr)\s*(?:&|et)\s*Mme)\s+/i.exec(client)
   const single = ['Mme', 'M.', 'Mr', 'Mlle'].find((c) => client.startsWith(`${c} `))
   const title = couple ? 'Mme et M.' : (single ?? '')

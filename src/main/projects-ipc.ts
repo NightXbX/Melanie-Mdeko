@@ -10,7 +10,7 @@ import * as p from './projects'
 export function registerProjectsIpc(db: DatabaseSync, paths: DataPaths): void {
   const api: { [K in keyof ProjectsApi]: (sender: BrowserWindow | null, ...args: Parameters<ProjectsApi[K]>) => unknown } = {
     list: () => p.listProjects(db),
-    create: (_w, title, name) => p.createProject(db, title, name),
+    create: (_w, title, name, kind) => p.createProject(db, title, name, kind),
     get: (_w, id) => p.getProject(db, id),
     update: (_w, id, patch) => p.updateProject(db, id, patch),
     trash: (_w, id) => p.setProjectDeleted(db, id, true),
@@ -51,6 +51,7 @@ export function registerProjectsIpc(db: DatabaseSync, paths: DataPaths): void {
     moveNote: (_w, noteId, x, y, w) => p.moveNote(db, noteId, x, y, w),
     adjust: (_w, id, pageKey, elementId, patch) => p.adjustElement(db, id, pageKey, elementId, patch),
     resetPage: (_w, id, pageKey) => p.resetPageAdjustments(db, id, pageKey),
+    setPageHidden: (_w, id, pageKey, hidden) => p.setPageHidden(db, id, pageKey, hidden),
     deleteNote: (_w, noteId) => p.deleteNote(db, noteId),
     export: (w, id, format) => exportBook(db, paths, id, format, w),
     prepareMail: (_w, id, mail) => prepareMail(db, paths, id, mail),

@@ -163,7 +163,9 @@ export async function* readMdekoBook(mupdf: MupdfModule, doc: Mupdf.Document): A
       if (m && title) sections.push({ from: Number(m[1]), to: Number(m[2] ?? m[1]), key: cle(title.text) })
     }
   }
-  const sectionOf = (pageNumber: number) => sections.find((s) => pageNumber >= s.from && pageNumber <= s.to)?.key ?? ''
+  // Sommaire retiré (devis, par exemple) : la section se devine d'après la page elle-même.
+  const sectionOf = (pageNumber: number, p: () => MdekoPage) =>
+    sections.length ? (sections.find((s) => pageNumber >= s.from && pageNumber <= s.to)?.key ?? '') : guessSection(p())
 
   let need: Need | null = null
   const flush = function* (): Generator<ImportEvent> {
@@ -171,12 +173,14 @@ export async function* readMdekoBook(mupdf: MupdfModule, doc: Mupdf.Document): A
     need = null
   }
 
-  for (let n = 1; n < count - 1; n++) {
+  for (let n = 1; n < count; n++) {
     await new Promise((r) => setImmediate(r))
     yield { kind: 'progress', page: n + 1 }
-    const section = sectionOf(n + 1)
+    let page: MdekoPage | null = null
+    const load = () => (page ??= mdekoPage(mupdf, doc.loadPage(n)))
+    const section = sectionOf(n + 1, load)
     if (!section) continue
-    const p = mdekoPage(mupdf, doc.loadPage(n))
+    const p = load()
     const { title, room, suite } = header(p)
     const key = cle(title)
 
@@ -268,6 +272,21 @@ export async function* readMdekoBook(mupdf: MupdfModule, doc: Mupdf.Document): A
     }
   }
   yield* flush()
+}
+
+// Section d'une page sans sommaire, d'après ce qu'elle montre. Les pages de texte (avant-propos, envies…) ne se
+// reconnaissent pas à coup sûr : elles sont laissées de côté.
+function guessSection(p: MdekoPage): string {
+  const keys = p.lines.map((l) => cle(l.text))
+  const top = p.lines.filter((l) => l.y0 < 25).map((l) => cle(l.text))
+  if (top.includes('planchetendance')) return 'planchetendance'
+  if (top.includes('nuancier')) return 'teintesetcouleurs'
+  if (top.includes('artisans')) return 'artisans'
+  if (keys.includes('monchoix') || top.includes('meschoix') || top.includes('recapitulatifdemeschoix') || top.some((k) => k.includes('autrespropositions'))) {
+    return 'shoppinglist'
+  }
+  if (p.images.some((i) => i.x1 - i.x0 > 200)) return 'plans'
+  return ''
 }
 
 // --- Teintes et artisans ----------------------------------------------------------------------------

@@ -5,6 +5,7 @@ import type {
   Artisan,
   BookFormat,
   DesignerSettings,
+  DocumentKind,
   MailRequest,
   Paint,
   Project,
@@ -92,7 +93,7 @@ export interface ArticleFacets {
 
 export interface ProjectsApi {
   list(): Promise<ProjectSummary[]>
-  create(clientTitle: string, clientName: string): Promise<number>
+  create(clientTitle: string, clientName: string, kind?: DocumentKind): Promise<number>
   get(id: number): Promise<Project | null>
   update(id: number, patch: ProjectPatch): Promise<void>
   trash(id: number): Promise<void>
@@ -134,6 +135,7 @@ export interface ProjectsApi {
   moveNote(noteId: number, x: number, y: number, w?: number): Promise<void>
   adjust(id: number, pageKey: string, elementId: string, patch: BookAdjustment | null): Promise<void>
   resetPage(id: number, pageKey: string): Promise<void>
+  setPageHidden(id: number, pageKey: string, hidden: boolean): Promise<void>
   deleteNote(noteId: number): Promise<void>
   export(id: number, format: BookFormat): Promise<string | null> // null : enregistrement annulé
   // Crée le book (rangé dans le dossier du projet) et prépare le mail dans Mail ; renvoie les fichiers joints.
@@ -441,5 +443,5 @@ export const PROJECT_METHODS = [
   'reorder', 'addNeed', 'setNeedRoom', 'setNeedChoice', 'setNeedAlternatives', 'setNeedImages', 'removeNeed', 'setNeedQuantity', 'setTrendImages', 'listInspirationImages', 'listPaints', 'createPaint',
   'updatePaint', 'deletePaint', 'countPaintProjects', 'updatePaintBrand', 'replaceRenderImage', 'cropRender', 'addMarker', 'moveMarker', 'removeMarker',
   'listArtisans', 'saveArtisan', 'setLinks', 'getSettings', 'saveSettings', 'pages', 'editText', 'addNote', 'moveNote',
-  'deleteNote', 'adjust', 'resetPage', 'export', 'prepareMail', 'openFolder'
+  'deleteNote', 'adjust', 'resetPage', 'setPageHidden', 'export', 'prepareMail', 'openFolder'
 ] as const satisfies readonly (keyof ProjectsApi)[]

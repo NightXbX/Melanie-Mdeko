@@ -3,7 +3,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { ArticleCard } from '@shared/api'
 import { formatPrice } from '@shared/format'
 import { DEFAULT_PAINT_BRAND } from '@shared/projects'
-import { getProject, getSettings, listAdjustments, listArtisans, listNotes, listPaints, projectTitle, wishesText } from '../projects'
+import { getProject, getSettings, listAdjustments, listArtisans, listHiddenPages, listNotes, listPaints, projectTitle, wishesText } from '../projects'
 import type { BookArticle, BookData, ImageRef } from './layout'
 
 const MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
@@ -74,7 +74,9 @@ export function bookData(db: DatabaseSync, dataRoot: string, projectId: number):
   const artisansById = new Map(listArtisans(db).map((a) => [a.id, a]))
 
   return {
+    kind: project.kind,
     clientLabel: projectTitle(project.clientTitle, project.clientName),
+    clientAddress: project.coverAddress ? project.address.trim() : '',
     dateLabel: dateLabel(project.bookDate),
     designerName: settings.designerName,
     address: settings.address,
@@ -117,6 +119,7 @@ export function bookData(db: DatabaseSync, dataRoot: string, projectId: number):
       .filter((a) => a !== undefined)
       .map((a) => ({ trade: a.trade, name: a.name, city: a.city, phone: a.phone })),
     notes: listNotes(db, projectId),
-    adjustments: listAdjustments(db, projectId)
+    adjustments: listAdjustments(db, projectId),
+    hiddenPages: listHiddenPages(db, projectId)
   }
 }

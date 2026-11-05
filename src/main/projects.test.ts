@@ -22,12 +22,14 @@ import {
   createProject,
   getProject,
   getSettings,
+  listHiddenPages,
   listPaints,
   listProjects,
   saveArtisan,
   saveSettings,
   setNeedChoice,
   setNeedRoom,
+  setPageHidden,
   setProjectLinks,
   setRooms,
   suggestAlternatives,
@@ -62,7 +64,23 @@ describe('projets', () => {
     expect(p.bookDate).toMatch(/^\d{4}-\d{2}$/)
   })
 
-  it('remplit le texte « Vos envies » avec les pièces du projet', () => {
+  it('crée un devis sans les pages de présentation, et repasse en design book', () => {
+    const id = createProject(db, 'Mme', 'Durand', 'quote')
+    const p = getProject(db, id)!
+    expect(p.kind).toBe('quote')
+    expect(p.coverAddress).toBe(true)
+    expect(listProjects(db)[0].kind).toBe('quote')
+    expect(listHiddenPages(db, id).sort()).toEqual(['artisans', 'closing', 'intro', 'toc', 'wishes'])
+    setPageHidden(db, id, 'render:1', true)
+    setPageHidden(db, id, 'render:1', true)
+    updateProject(db, id, { kind: 'book' })
+    expect(listHiddenPages(db, id)).toEqual(['render:1'])
+    setPageHidden(db, id, 'render:1', false)
+    expect(listHiddenPages(db, id)).toEqual([])
+    expect(getProject(db, createProject(db, 'M.', 'Martin'))!.coverAddress).toBe(false)
+  })
+
+    it('remplit le texte « Vos envies » avec les pièces du projet', () => {
     const id = createProject(db, 'Mme', 'Durand')
     setRooms(db, id, ['Entrée', 'Salon', ' ', 'Chambre'])
     saveSettings(db, { wishesText: 'Le relooking concerne votre {pieces}.' })

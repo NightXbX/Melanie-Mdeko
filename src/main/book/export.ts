@@ -3,12 +3,12 @@ import { dirname, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { app, BrowserWindow, dialog, shell } from 'electron'
 import type { Page } from '@shared/book'
-import type { BookFormat } from '@shared/projects'
+import { DOCUMENT_NAMES, type BookFormat, type DocumentKind } from '@shared/projects'
 import type { DataPaths } from '../paths'
 import { getProject, projectTitle } from '../projects'
 import { bookData } from './data'
 import { bookHtml } from './html'
-import { buildBook } from './layout'
+import { buildBook, exportedPages } from './layout'
 import { bookPptx } from './pptx'
 
 export function bookPages(db: DatabaseSync, paths: DataPaths, projectId: number): Page[] {
@@ -55,23 +55,28 @@ const today = () => {
   return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`
 }
 
-// « Design book Mme Durand (31-10-2026).pdf », numéroté s'il existe déjà : on n'écrase jamais un fichier.
-function freeName(folder: string, clientLabel: string, format: BookFormat): string {
-  const base = safeName(`Design book ${clientLabel} (${today()})`)
+// « Design book Mme Durand (31-10-2026).pdf » (ou « Devis … »), numéroté s'il existe déjà : on n'écrase jamais un fichier.
+function freeName(folder: string, kind: DocumentKind, clientLabel: string, format: BookFormat): string {
+  const base = safeName(`${DOCUMENT_NAMES[kind]} ${clientLabel} (${today()})`)
   let file = join(folder, `${base}.${format}`)
   for (let i = 2; existsSync(file); i++) file = join(folder, `${base} ${i}.${format}`)
   return file
 }
 
-async function bookContent(pages: Page[], format: BookFormat, clientLabel: string): Promise<Buffer> {
-  return format === 'pdf' ? renderPdf(bookHtml(pages)) : bookPptx(pages, `Design book ${clientLabel}`)
+// Les pages retirées par Mélanie ne sont pas exportées.
+async function bookContent(all: Page[], format: BookFormat, title: string): Promise<Buffer> {
+  const pages = exportedPages(all)
+  if (!pages.length) throw new Error('Toutes les pages sont retirées.')
+  return format === 'pdf' ? renderPdf(bookHtml(pages)) : bookPptx(pages, title)
 }
+
+const documentTitle = (d: { kind: DocumentKind; clientLabel: string }) => `${DOCUMENT_NAMES[d.kind]} ${d.clientLabel}`
 
 // Book créé dans le dossier du projet (pièce jointe d'un mail, par exemple), sans rien demander.
 export async function saveBookInProject(db: DatabaseSync, paths: DataPaths, projectId: number, format: BookFormat): Promise<string> {
   const data = bookData(db, paths.root, projectId)
-  const file = freeName(projectFolder(db, paths, projectId), data.clientLabel, format)
-  writeFileSync(file, await bookContent(buildBook(data), format, data.clientLabel))
+  const file = freeName(projectFolder(db, paths, projectId), data.kind, data.clientLabel, format)
+  writeFileSync(file, await bookContent(buildBook(data), format, documentTitle(data)))
   return file
 }
 
@@ -96,10 +101,11 @@ export async function exportBook(
   win: BrowserWindow | null
 ): Promise<string | null> {
   const data = bookData(db, paths.root, projectId)
-  const suggested = freeName(suggestedFolder(db, paths, projectId), data.clientLabel, format)
+  const suggested = freeName(suggestedFolder(db, paths, projectId), data.kind, data.clientLabel, format)
+  const what = data.kind === 'quote' ? 'le devis' : 'le design book'
 
   const options = {
-    title: format === 'pdf' ? 'Enregistrer le design book en PDF' : 'Enregistrer le design book en PowerPoint',
+    title: format === 'pdf' ? `Enregistrer ${what} en PDF` : `Enregistrer ${what} en PowerPoint`,
     buttonLabel: 'Enregistrer',
     defaultPath: suggested,
     filters: [format === 'pdf' ? { name: 'PDF', extensions: ['pdf'] } : { name: 'PowerPoint', extensions: ['pptx'] }],
@@ -109,7 +115,7 @@ export async function exportBook(
   if (result.canceled || !result.filePath) return null
   const file = /\.(pdf|pptx)$/i.test(result.filePath) ? result.filePath : `${result.filePath}.${format}`
 
-  writeFileSync(file, await bookContent(buildBook(data), format, data.clientLabel))
+  writeFileSync(file, await bookContent(buildBook(data), format, documentTitle(data)))
   db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value').run(LAST_FOLDER, dirname(file))
   shell.showItemInFolder(file)
   return file
