@@ -582,25 +582,36 @@ function paintPages(paints: BookData['paints']): Page[] {
   return pages
 }
 
-// Planche tendance : photos d'ambiance en mosaïque, 6 au plus par page.
+// Planche tendance : photos d'ambiance en mosaïque, 6 au plus par page, autant de photos que l'on veut.
+// Les photos sont réparties également entre les pages (7 photos : 4 + 3, pas 6 + 1).
 const TREND_PER_PAGE = 6
+
+// Nombre de photos par rangée selon le nombre de photos de la page (5 : 3 en haut, 2 plus grandes en bas).
+const TREND_ROWS: Record<number, number[]> = { 1: [1], 2: [2], 3: [3], 4: [2, 2], 5: [3, 2], 6: [3, 3] }
 
 function trendPages(trend: BookData['trend']): Page[] {
   const pages: Page[] = []
-  for (let start = 0; start < trend.length; start += TREND_PER_PAGE) {
-    const slice = trend.slice(start, start + TREND_PER_PAGE)
-    const cols = slice.length <= 3 ? slice.length : slice.length === 4 ? 2 : 3
-    const rows = Math.ceil(slice.length / cols)
+  const count = Math.ceil(trend.length / TREND_PER_PAGE)
+  let start = 0
+  for (let p = 0; p < count; p++) {
+    // Les premières pages prennent une photo de plus quand la division ne tombe pas juste.
+    const size = Math.floor(trend.length / count) + (p < trend.length % count ? 1 : 0)
+    const slice = trend.slice(start, start + size)
+    start += size
+    const rows = TREND_ROWS[slice.length]
     const area = { x: MARGIN, y: 26, w: 257, h: 162 }
     const gap = 4
-    const w = (area.w - (cols - 1) * gap) / cols
-    const h = (area.h - (rows - 1) * gap) / rows
+    const h = (area.h - (rows.length - 1) * gap) / rows.length
     const el: Element[] = [
       text({ x: MARGIN, y: 12, w: 200, h: 7 }, 'PLANCHE TENDANCE', { size: 11, weight: 400, color: COLORS.taupeDark, letterSpacing: 2 }, { id: 'title' })
     ]
-    slice.forEach((t, i) => {
-      const box = { x: area.x + (i % cols) * (w + gap), y: area.y + Math.floor(i / cols) * (h + gap), w, h }
-      el.push(fitted(t.image, box, `trend:${t.id}`))
+    let i = 0
+    rows.forEach((cols, r) => {
+      const w = (area.w - (cols - 1) * gap) / cols
+      for (let c = 0; c < cols; c++, i++) {
+        const box = { x: area.x + c * (w + gap), y: area.y + r * (h + gap), w, h }
+        el.push(fitted(slice[i].image, box, `trend:${slice[i].id}`))
+      }
     })
     pages.push({ key: `trend:${pages.length + 1}`, elements: el })
   }

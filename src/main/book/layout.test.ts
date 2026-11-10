@@ -232,8 +232,28 @@ describe('design book', () => {
     const trend = Array.from({ length: 7 }, (_, i) => ({ id: 50 + i, image: img }))
     const pages = buildBook(data({ trend }))
     expect(pages.slice(2, 4).map((p) => p.key)).toEqual(['trend:1', 'trend:2'])
-    expect(byKey(pages, 'trend:1').elements.filter((e) => e.type === 'image')).toHaveLength(6)
+    // 7 photos : réparties en 4 + 3, pas 6 + 1.
+    expect(byKey(pages, 'trend:1').elements.filter((e) => e.type === 'image')).toHaveLength(4)
+    expect(byKey(pages, 'trend:2').elements.filter((e) => e.type === 'image')).toHaveLength(3)
     expect(textsOf(pages[1]).slice(0, 2)).toEqual(['3-4.', 'Planche tendance'])
+  })
+
+  it('accepte autant de photos que voulu sur la planche tendance, sans en perdre', () => {
+    for (const n of [1, 5, 6, 13, 25]) {
+      const trend = Array.from({ length: n }, (_, i) => ({ id: 100 + i, image: img }))
+      const pages = buildBook(data({ trend })).filter((p) => p.key.startsWith('trend:'))
+      const ids = pages.flatMap((p) => p.elements.filter((e) => e.type === 'image').map((e) => e.id))
+      expect(ids).toEqual(trend.map((t) => `trend:${t.id}`))
+      expect(pages).toHaveLength(Math.ceil(n / 6))
+      for (const p of pages) {
+        for (const e of p.elements) {
+          if (e.type !== 'image') continue
+          expect(e.x).toBeGreaterThanOrEqual(19.9)
+          expect(e.x + e.w).toBeLessThanOrEqual(277.1)
+          expect(e.y + e.h).toBeLessThanOrEqual(188.1)
+        }
+      }
+    }
   })
 
   it('pose la 4e de couverture : coordonnées étiquetées et QR code sur un bandeau taupe', () => {

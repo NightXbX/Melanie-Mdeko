@@ -64,7 +64,7 @@ export function TrendSection({ project, reload }: SectionProps) {
         </button>
       </SectionHeader>
       <p className="section-note">
-        La planche tendance ouvre le design book, juste après le sommaire. Sans photo, elle n’apparaît pas. 6 photos par page.
+        La planche tendance ouvre le design book, juste après le sommaire. Sans photo, elle n’apparaît pas. Mettez autant de photos que vous voulez : elles sont réparties sur plusieurs pages, 6 au plus par page.
       </p>
 
       {ids.length === 0 ? (
