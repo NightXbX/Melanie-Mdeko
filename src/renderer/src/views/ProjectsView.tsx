@@ -1,7 +1,18 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import type { DocumentKind, ProjectSummary } from '@shared/projects'
+
+// Deux catégories de projets, comme ses dossiers : les design books et les devis (retenu d'une fois sur l'autre).
+const TAB_KEY = 'mdeko.projects.tab'
+const readTab = (): DocumentKind => {
+  try {
+    return localStorage.getItem(TAB_KEY) === 'quote' ? 'quote' : 'book'
+  } catch {
+    return 'book'
+  }
+}
 import { useApp } from '../app-context'
 import { Icon } from '../components/Icon'
+import { DuplicateSheet } from '../components/project/DuplicateSheet'
 import { ProjectEditor } from '../components/project/ProjectEditor'
 import { Toolbar } from '../components/Toolbar'
 
@@ -29,6 +40,22 @@ export function ProjectsView({ newProjectSignal, openRequest, onImport }: Props)
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null)
   const [openId, setOpenId] = useState<number | null>(null)
   const [creating, setCreating] = useState<DocumentKind | null>(null)
+  const [tab, setTabState] = useState<DocumentKind>(readTab)
+  const [duplicating, setDuplicating] = useState<{ id: number; clientTitle: string; clientName: string; kind: DocumentKind } | null>(null)
+  const setTab = (kind: DocumentKind) => {
+    setTabState(kind)
+    try {
+      localStorage.setItem(TAB_KEY, kind)
+    } catch {
+      // réglage d'affichage seulement
+    }
+  }
+  const startDuplicate = async (id: number) => {
+    const p = await window.mdeko.projects.get(id)
+    if (p) setDuplicating({ id, clientTitle: p.clientTitle, clientName: p.clientName, kind: p.kind })
+  }
+  const shown = (projects ?? []).filter((p) => p.kind === tab)
+  const count = (kind: DocumentKind) => (projects ?? []).filter((p) => p.kind === kind).length
 
   useEffect(() => {
     void window.mdeko.projects.list().then(setProjects)
@@ -46,7 +73,7 @@ export function ProjectsView({ newProjectSignal, openRequest, onImport }: Props)
     }
   }, [newProjectSignal])
 
-  if (openId !== null) return <ProjectEditor projectId={openId} onClose={() => setOpenId(null)} />
+  if (openId !== null) return <ProjectEditor key={openId} projectId={openId} onClose={() => setOpenId(null)} onOpenProject={setOpenId} />
 
   return (
     <>
@@ -75,31 +102,54 @@ export function ProjectsView({ newProjectSignal, openRequest, onImport }: Props)
           onImport(window.mdeko.pathForFile(pdf))
         }}
       >
-        {projects?.length === 0 && (
+        <div className="segmented projects-tabs" role="tablist">
+          {(['book', 'quote'] as DocumentKind[]).map((kind) => (
+            <button key={kind} type="button" role="tab" aria-selected={tab === kind} className={`button${tab === kind ? ' is-active' : ''}`} onClick={() => setTab(kind)}>
+              {kind === 'book' ? 'Design books' : 'Devis'}
+              <span className="filter-count">{count(kind)}</span>
+            </button>
+          ))}
+        </div>
+        {projects && shown.length === 0 && (
           <div className="projects-grid">
-            <button type="button" className="project-card project-new" onClick={() => setCreating('book')}>
+            <button type="button" className="project-card project-new" onClick={() => setCreating(tab)}>
               <div className="project-cover">
                 <Icon name="plus" size={36} />
               </div>
-              <span className="project-title">Nouveau projet</span>
+              <span className="project-title">{tab === 'quote' ? 'Nouveau devis' : 'Nouveau projet'}</span>
             </button>
           </div>
         )}
-        {byYear(projects ?? []).map(([year, list]) => (
+        {byYear(shown).map(([year, list]) => (
           <section key={year} className="projects-year">
             <h2>{year}</h2>
             <div className="projects-grid">
               {list.map((p) => (
-                <button key={p.id} type="button" className="project-card" onClick={() => setOpenId(p.id)}>
-                  <div className="project-cover">{p.coverUrl ? <img src={p.coverUrl} alt="" /> : <Icon name="folder" size={36} />}</div>
-                  <span className="project-title">{p.title}</span>
-                  <span className="project-date">{p.kind === 'quote' ? `Devis · ${monthLabel(p.bookDate)}` : monthLabel(p.bookDate)}</span>
-                </button>
+                <div key={p.id} className="project-card-wrap">
+                  <button type="button" className="project-card" onClick={() => setOpenId(p.id)}>
+                    <div className="project-cover">{p.coverUrl ? <img src={p.coverUrl} alt="" /> : <Icon name="folder" size={36} />}</div>
+                    <span className="project-title">{p.title}</span>
+                    <span className="project-date">{p.kind === 'quote' ? `Devis · ${monthLabel(p.bookDate)}` : monthLabel(p.bookDate)}</span>
+                  </button>
+                  <button type="button" className="button project-duplicate" onClick={() => void startDuplicate(p.id)}>
+                    Dupliquer…
+                  </button>
+                </div>
               ))}
             </div>
           </section>
         ))}
       </div>
+      {duplicating && (
+        <DuplicateSheet
+          source={duplicating}
+          onCancel={() => setDuplicating(null)}
+          onDone={(id) => {
+            setDuplicating(null)
+            setOpenId(id)
+          }}
+        />
+      )}
       {creating && (
         <NewProjectSheet
           kind={creating}

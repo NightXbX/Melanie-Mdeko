@@ -163,6 +163,7 @@ export function AiSheet({ render, onClose, onChanged }: { render: ProjectRender;
             {status && (
               <span className="ai-spend">
                 Ce mois-ci : {dollars(status.spentCents)} sur {dollars(status.settings.capCents)}
+                {status.creditCents !== null && ` · crédit OpenRouter : ${dollars(status.creditCents)}`}
               </span>
             )}
             <button type="button" className="button" disabled={running} onClick={onClose}>

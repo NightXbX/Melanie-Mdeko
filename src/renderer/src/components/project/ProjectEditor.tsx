@@ -1,3 +1,4 @@
+import { Assistant } from '../Assistant'
 import { useCallback, useEffect, useState } from 'react'
 import type { BookFormat, DesignerSettings, Project } from '@shared/projects'
 import { useApp } from '../../app-context'
@@ -11,7 +12,7 @@ import { Slideshow } from './Slideshow'
 import { TrendSection } from './TrendSection'
 import { ArtisansSection, ClientSection, PaintsSection, ReportSection, TextsSection, WishesSection } from './sections'
 
-type Step = 'client' | 'trend' | 'wishes' | 'report' | 'renders' | 'needs' | 'paints' | 'artisans' | 'texts' | 'send'
+type Step = 'assistant' | 'client' | 'trend' | 'wishes' | 'report' | 'renders' | 'needs' | 'paints' | 'artisans' | 'texts' | 'send'
 
 export interface SectionProps {
   project: Project
@@ -19,7 +20,7 @@ export interface SectionProps {
   reload(): Promise<void>
 }
 
-export function ProjectEditor({ projectId, onClose }: { projectId: number; onClose(): void }) {
+export function ProjectEditor({ projectId, onClose, onOpenProject }: { projectId: number; onClose(): void; onOpenProject(id: number): void }) {
   const { notify, dataVersion } = useApp()
   const [project, setProject] = useState<Project | null>(null)
   const [settings, setSettings] = useState<DesignerSettings | null>(null)
@@ -81,7 +82,8 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
     { id: 'paints', label: 'Teintes et couleurs', count: project.paintIds.length },
     { id: 'artisans', label: 'Artisans', count: project.artisanIds.length },
     { id: 'texts', label: 'Textes' },
-    { id: 'send', label: 'Envoyer au client' }
+    { id: 'send', label: 'Envoyer au client' },
+    { id: 'assistant', label: 'Assistant' }
   ]
   const props: SectionProps = { project, settings, reload }
 
@@ -146,7 +148,7 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
           ))}
         </nav>
         <div className="project-body">
-          {step === 'client' && <ClientSection {...props} onDeleted={onClose} />}
+          {step === 'client' && <ClientSection {...props} onDeleted={onClose} onDuplicated={onOpenProject} />}
           {step === 'trend' && <TrendSection {...props} />}
           {step === 'wishes' && <WishesSection {...props} />}
           {step === 'report' && <ReportSection {...props} />}
@@ -156,6 +158,7 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
           {step === 'artisans' && <ArtisansSection {...props} />}
           {step === 'texts' && <TextsSection {...props} />}
           {step === 'send' && <SendSection {...props} />}
+          {step === 'assistant' && <Assistant projectId={projectId} onReportChanged={() => void reload()} />}
         </div>
         {preview && <BookPreview projectId={projectId} version={project} onChanged={() => void reload()} />}
       </div>

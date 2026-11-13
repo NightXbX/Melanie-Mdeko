@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite'
+import { cleanMarkdown } from '@shared/markdown'
 import type { ArticleCard } from '@shared/api'
 import type {
   Artisan,
@@ -12,7 +13,7 @@ import type {
   RenderSection
 } from '@shared/projects'
 import { DEFAULT_MAIL_BODY, DEFAULT_MAIL_SUBJECT, DEFAULT_PAINT_BRAND, QUOTE_HIDDEN_PAGES, type DocumentKind } from '@shared/projects'
-import type { BookAdjustment } from '@shared/book'
+import { cleanStyle, OBJECT_KINDS, type BookAdjustment, type DeletedNote, type ObjectKind, type ObjectStyle } from '@shared/book'
 import { FULL, movePoint } from '@shared/crop'
 import { inTransaction } from './article-edit'
 import { CARD_COLUMNS, toCard } from './articles'
@@ -612,20 +613,21 @@ export function editBookText(db: DatabaseSync, projectId: number, key: string, v
     const project = getProject(db, projectId)
     if (project) updateProject(db, projectId, { texts: { ...project.texts, [kind]: text } })
   } else if (kind === 'report') {
-    // Morceau du compte-rendu (une colonne d'une page) : « report:<début>:<fin> » dans le texte complet.
+    // Morceau d'un paragraphe du compte-rendu : « report:<début>:<fin> » dans le texte nettoyé (comme le book).
     const [start, end] = rest.split(':').map(Number)
     const project = getProject(db, projectId)
-    if (project && end <= project.report.length) {
-      updateProject(db, projectId, { report: project.report.slice(0, start) + text + project.report.slice(end) })
+    const report = project ? cleanMarkdown(project.report) : ''
+    if (project && end <= report.length) {
+      updateProject(db, projectId, { report: report.slice(0, start) + text.replace(/\s*\n\s*/g, ' ') + report.slice(end) })
     }
   } else if (kind === 'caption') {
     db.prepare('UPDATE renders SET caption = ? WHERE id = ? AND project_id = ?').run(text.trim() || null, id, projectId)
   } else if (kind === 'needLabel') {
     db.prepare('UPDATE needs SET label = ? WHERE id = ? AND project_id = ?').run(text.trim() || null, id, projectId)
   } else if (kind === 'note') {
-    // Une annotation vidée disparaît.
+    // Une annotation vidée disparaît (pas une forme, dont le texte est facultatif).
     if (text.trim()) db.prepare('UPDATE book_notes SET text = ? WHERE id = ? AND project_id = ?').run(text, id, projectId)
-    else db.prepare('DELETE FROM book_notes WHERE id = ? AND project_id = ?').run(id, projectId)
+    else db.prepare("DELETE FROM book_notes WHERE id = ? AND project_id = ? AND kind = 'text'").run(id, projectId)
   }
   touch(db, projectId)
 }
@@ -638,26 +640,104 @@ export function addNote(db: DatabaseSync, projectId: number, pageKey: string, x:
   )
 }
 
-export function moveNote(db: DatabaseSync, noteId: number, x: number, y: number, w?: number): void {
-  db.prepare('UPDATE book_notes SET x = ?, y = ?, w = coalesce(?, w) WHERE id = ?').run(
-    Math.max(0, Math.min(x, 280)),
-    Math.max(0, Math.min(y, 203)),
-    w === undefined ? null : Math.max(20, Math.min(w, 280)),
+// Taille par défaut d'un objet inséré depuis la barre d'outils (mm) ; une image garde ses proportions.
+const OBJECT_SIZES: Record<ObjectKind, { w: number; h: number }> = {
+  text: { w: 90, h: 10 },
+  image: { w: 90, h: 60 },
+  rect: { w: 60, h: 40 },
+  ellipse: { w: 40, h: 40 },
+  line: { w: 60, h: 6 },
+  arrow: { w: 60, h: 6 }
+}
+
+// Objet inséré depuis la barre d'outils de l'aperçu, au milieu de la page (ou à l'endroit donné).
+export function addObject(
+  db: DatabaseSync,
+  projectId: number,
+  pageKey: string,
+  kind: ObjectKind,
+  at: { x?: number; y?: number; imageId?: number; ratio?: number } = {}
+): number {
+  if (!OBJECT_KINDS.includes(kind)) throw new Error('Objet inconnu')
+  let { w, h } = OBJECT_SIZES[kind]
+  if (kind === 'image') {
+    if (!at.imageId) throw new Error('Image manquante')
+    const ratio = at.ratio && at.ratio > 0 ? at.ratio : 1.5
+    // Grande image : la moitié de la largeur de la page, sans dépasser la hauteur.
+    w = Math.min(140, 120 * ratio)
+    h = w / ratio
+  }
+  // Au milieu de la page, décalé en escalier pour ne pas recouvrir l'objet inséré juste avant.
+  const { n } = db.prepare('SELECT count(*) AS n FROM book_notes WHERE project_id = ? AND page_key = ?').get(projectId, pageKey) as { n: number }
+  const shift = (n % 6) * 8
+  const x = at.x ?? (297 - w) / 2 + shift
+  const y = at.y ?? (210 - h) / 2 + shift
+  const id = Number(
+    db
+      .prepare('INSERT INTO book_notes (project_id, page_key, kind, x, y, w, h, image_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(projectId, pageKey, kind, Math.max(0, Math.min(x, 280)), Math.max(0, Math.min(y, 200)), w, kind === 'text' ? null : h, at.imageId ?? null).lastInsertRowid
+  )
+  touch(db, projectId)
+  return id
+}
+
+export function moveNote(db: DatabaseSync, noteId: number, x: number, y: number, w?: number, h?: number): void {
+  db.prepare('UPDATE book_notes SET x = ?, y = ?, w = coalesce(?, w), h = coalesce(?, h) WHERE id = ?').run(
+    Math.max(-280, Math.min(x, 290)),
+    Math.max(-200, Math.min(y, 205)),
+    w === undefined ? null : Math.max(2, Math.min(w, 400)),
+    h === undefined ? null : Math.max(0.5, Math.min(h, 300)),
     noteId
   )
 }
 
-export function deleteNote(db: DatabaseSync, noteId: number): void {
+// Mise en forme d'un objet inséré (complète la précédente, ou la remplace) ; renvoie la précédente (⌘Z).
+export function styleNote(db: DatabaseSync, noteId: number, patch: ObjectStyle, replace = false): ObjectStyle {
+  const row = db.prepare('SELECT style FROM book_notes WHERE id = ?').get(noteId) as { style: string | null } | undefined
+  if (!row) return {}
+  const before = parseStyle(row.style)
+  const style = cleanStyle(replace ? patch : { ...before, ...cleanStyle(patch) })
+  db.prepare('UPDATE book_notes SET style = ? WHERE id = ?').run(JSON.stringify(style), noteId)
+  return before
+}
+
+function parseStyle(json: unknown): ObjectStyle {
+  if (typeof json !== 'string') return {}
+  try {
+    return cleanStyle(JSON.parse(json))
+  } catch {
+    return {}
+  }
+}
+
+// Renvoie l'annotation supprimée, pour la remettre (⌘Z).
+export function deleteNote(db: DatabaseSync, noteId: number): DeletedNote | null {
+  const row = db.prepare('SELECT * FROM book_notes WHERE id = ?').get(noteId) as DeletedNote | undefined
   db.prepare('DELETE FROM book_notes WHERE id = ?').run(noteId)
+  return row ?? null
+}
+
+const NOTE_COLUMNS = ['id', 'project_id', 'page_key', 'kind', 'x', 'y', 'w', 'h', 'image_id', 'style', 'text', 'created_at'] as const
+
+export function restoreNote(db: DatabaseSync, row: DeletedNote): void {
+  const values = NOTE_COLUMNS.map((c) => {
+    const v = row[c]
+    return typeof v === 'string' || typeof v === 'number' ? v : null
+  })
+  db.prepare(`INSERT OR REPLACE INTO book_notes (${NOTE_COLUMNS.join(', ')}) VALUES (${NOTE_COLUMNS.map(() => '?').join(', ')})`).run(...values)
 }
 
 export function listNotes(db: DatabaseSync, projectId: number) {
-  return (db.prepare('SELECT id, page_key, x, y, w, text FROM book_notes WHERE project_id = ? ORDER BY id').all(projectId) as Row[]).map((r) => ({
+  return (db.prepare('SELECT id, page_key, kind, x, y, w, h, image_id, style, text FROM book_notes WHERE project_id = ? ORDER BY id').all(projectId) as Row[]).map((r) => ({
     id: r.id as number,
     pageKey: r.page_key as string,
+    kind: (OBJECT_KINDS.includes(r.kind as ObjectKind) ? r.kind : 'text') as ObjectKind,
     x: r.x as number,
     y: r.y as number,
     w: r.w as number,
+    h: (r.h as number | null) ?? null,
+    imageId: (r.image_id as number | null) ?? null,
+    style: parseStyle(r.style),
     text: r.text as string
   }))
 }
@@ -670,12 +750,14 @@ const clamp = (v: unknown, min: number, max: number) => {
   return n === null ? null : Math.max(min, Math.min(n, max))
 }
 
-const RESET = 'UPDATE book_adjustments SET x = NULL, y = NULL, w = NULL, h = NULL, size = NULL'
+const RESET = 'UPDATE book_adjustments SET x = NULL, y = NULL, w = NULL, h = NULL, size = NULL, style = NULL'
 
 // Complète l'ajustement d'un élément (null : il revient à sa place et à sa taille d'origine, son texte est gardé).
-export function adjustElement(db: DatabaseSync, projectId: number, pageKey: string, elementId: string, patch: BookAdjustment | null): void {
-  if (!pageKey || !elementId) return
+// Renvoie l'ajustement d'avant (null : aucun), pour l'annuler avec restoreAdjustment (⌘Z).
+export function adjustElement(db: DatabaseSync, projectId: number, pageKey: string, elementId: string, patch: BookAdjustment | null): BookAdjustment | null {
+  if (!pageKey || !elementId) return null
   const where = [projectId, pageKey, elementId] as const
+  const previous = db.prepare('SELECT * FROM book_adjustments WHERE project_id = ? AND page_key = ? AND element_id = ?').get(...where) as Row | undefined
   if (patch === null) {
     db.prepare(`${RESET} WHERE project_id = ? AND page_key = ? AND element_id = ?`).run(...where)
     db.prepare('DELETE FROM book_adjustments WHERE project_id = ? AND page_key = ? AND element_id = ? AND text IS NULL').run(...where)
@@ -683,10 +765,11 @@ export function adjustElement(db: DatabaseSync, projectId: number, pageKey: stri
     const cur = (db.prepare('SELECT * FROM book_adjustments WHERE project_id = ? AND page_key = ? AND element_id = ?').get(...where) ?? {}) as Row
     const value = (k: keyof BookAdjustment) => (patch[k] !== undefined ? patch[k] : cur[k])
     const text = value('text')
+    const style = patch.style ? cleanStyle({ ...parseStyle(cur.style), ...cleanStyle(patch.style) }) : parseStyle(cur.style)
     db.prepare(
-      `INSERT INTO book_adjustments (project_id, page_key, element_id, x, y, w, h, size, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO book_adjustments (project_id, page_key, element_id, x, y, w, h, size, text, style) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (project_id, page_key, element_id) DO UPDATE SET
-         x = excluded.x, y = excluded.y, w = excluded.w, h = excluded.h, size = excluded.size, text = excluded.text`
+         x = excluded.x, y = excluded.y, w = excluded.w, h = excluded.h, size = excluded.size, text = excluded.text, style = excluded.style`
     ).run(
       ...where,
       clamp(value('x'), -280, 290),
@@ -694,21 +777,36 @@ export function adjustElement(db: DatabaseSync, projectId: number, pageKey: stri
       clamp(value('w'), 2, 400),
       clamp(value('h'), 1, 300),
       clamp(value('size'), 5, 120),
-      typeof text === 'string' ? text : null
+      typeof text === 'string' ? text : null,
+      Object.keys(style).length ? JSON.stringify(style) : null
     )
   }
   touch(db, projectId)
+  return previous ? adjustmentOf(previous) : null
+}
+
+export function restoreAdjustment(db: DatabaseSync, projectId: number, pageKey: string, elementId: string, adjustment: BookAdjustment | null): void {
+  db.prepare('DELETE FROM book_adjustments WHERE project_id = ? AND page_key = ? AND element_id = ?').run(projectId, pageKey, elementId)
+  if (adjustment) adjustElement(db, projectId, pageKey, elementId, adjustment)
+  else touch(db, projectId)
+}
+
+function adjustmentOf(r: Row): BookAdjustment {
+  const a: BookAdjustment = {}
+  for (const k of ['x', 'y', 'w', 'h', 'size'] as const) {
+    const v = finite(r[k])
+    if (v !== null) a[k] = v
+  }
+  if (typeof r.text === 'string') a.text = r.text
+  const style = parseStyle(r.style)
+  if (Object.keys(style).length) a.style = style
+  return a
 }
 
 export function listAdjustments(db: DatabaseSync, projectId: number): Record<string, BookAdjustment> {
   const out: Record<string, BookAdjustment> = {}
   for (const r of db.prepare('SELECT * FROM book_adjustments WHERE project_id = ?').all(projectId) as Row[]) {
-    const a: BookAdjustment = {}
-    for (const k of ['x', 'y', 'w', 'h', 'size'] as const) {
-      const v = finite(r[k])
-      if (v !== null) a[k] = v
-    }
-    if (typeof r.text === 'string') a.text = r.text
+    const a = adjustmentOf(r)
     out[`${r.page_key as string}|${r.element_id as string}`] = a
   }
   return out
@@ -730,4 +828,93 @@ export function setPageHidden(db: DatabaseSync, projectId: number, pageKey: stri
 
 export function listHiddenPages(db: DatabaseSync, projectId: number): string[] {
   return (db.prepare('SELECT page_key FROM book_hidden_pages WHERE project_id = ?').all(projectId) as { page_key: string }[]).map((r) => r.page_key)
+}
+
+// --- Duplication ------------------------------------------------------------------------------------
+
+// Copie complète d'un projet (pièces, rendus et leurs versions, repères, shopping list, teintes, artisans,
+// planche tendance, pages libres, textes, réglages de l'aperçu) pour un autre client ou un autre document.
+// Les discussions et les vocaux de l'assistant restent dans le projet d'origine. Une seule transaction.
+export function duplicateProject(
+  db: DatabaseSync,
+  sourceId: number,
+  target: { clientTitle: string; clientName: string; kind: DocumentKind }
+): number {
+  if (!target.clientName.trim()) throw new Error('Le nom du client est obligatoire.')
+  const columns = (table: string) => (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name)
+  const rows = (table: string, where: string, ...params: (number | string)[]) =>
+    db.prepare(`SELECT * FROM ${table} WHERE ${where}`).all(...params) as Record<string, unknown>[]
+  // Insère une copie de la ligne (sans son id), avec les valeurs remplacées ; renvoie le nouvel id.
+  const insert = (table: string, row: Record<string, unknown>, changes: Record<string, unknown>) => {
+    const names = columns(table).filter((c) => c !== 'id')
+    const values = names.map((c) => (c in changes ? changes[c] : row[c])) as (string | number | null)[]
+    return Number(db.prepare(`INSERT INTO ${table} (${names.join(', ')}) VALUES (${names.map(() => '?').join(', ')})`).run(...values).lastInsertRowid)
+  }
+
+  const source = db.prepare('SELECT * FROM projects WHERE id = ?').get(sourceId) as Record<string, unknown> | undefined
+  if (!source) throw new Error('Ce projet n’existe plus.')
+  const stamp = now()
+  db.exec('BEGIN')
+  try {
+    const id = insert('projects', source, {
+      client_title: target.clientTitle.trim() || null,
+      client_name: target.clientName.trim(),
+      created_at: stamp,
+      updated_at: stamp,
+      deleted_at: null,
+      mailed_at: null
+    })
+    const rooms = new Map<number, number>()
+    for (const r of rows('rooms', 'project_id = ?', sourceId)) rooms.set(r.id as number, insert('rooms', r, { project_id: id }))
+    const room = (v: unknown) => (v === null ? null : (rooms.get(v as number) ?? null))
+
+    const renders = new Map<number, number>()
+    for (const r of rows('renders', 'project_id = ?', sourceId)) {
+      renders.set(r.id as number, insert('renders', r, { project_id: id, room_id: room(r.room_id), active_version_id: null }))
+    }
+    const versions = new Map<number, number>()
+    for (const [oldRender, newRender] of renders) {
+      for (const v of rows('render_versions', 'render_id = ? ORDER BY id', oldRender)) {
+        versions.set(v.id as number, insert('render_versions', v, { render_id: newRender, parent_id: v.parent_id === null ? null : (versions.get(v.parent_id as number) ?? null) }))
+      }
+      for (const m of rows('render_markers', 'render_id = ?', oldRender)) insert('render_markers', m, { render_id: newRender })
+      const active = (db.prepare('SELECT active_version_id FROM renders WHERE id = ?').get(oldRender) as { active_version_id: number | null }).active_version_id
+      if (active !== null) db.prepare('UPDATE renders SET active_version_id = ? WHERE id = ?').run(versions.get(active) ?? null, newRender)
+    }
+
+    const needs = new Map<number, number>()
+    for (const n of rows('needs', 'project_id = ?', sourceId)) {
+      const newNeed = insert('needs', n, { project_id: id, room_id: room(n.room_id) })
+      needs.set(n.id as number, newNeed)
+      for (const a of rows('need_articles', 'need_id = ?', n.id as number)) insert('need_articles', a, { need_id: newNeed })
+      for (const i of rows('need_images', 'need_id = ?', n.id as number)) insert('need_images', i, { need_id: newNeed })
+    }
+    for (const table of ['free_pages', 'project_paints', 'project_artisans', 'project_trend_images']) {
+      for (const r of rows(table, 'project_id = ?', sourceId)) insert(table, r, { project_id: id })
+    }
+
+    // Réglages de l'aperçu : leurs clés citent des besoins, des rendus ou des annotations, renumérotés ici.
+    const notes = new Map<number, number>()
+    const maps: Record<string, Map<number, number>> = { need: needs, choices: needs, needLabel: needs, render: renders, caption: renders, note: notes }
+    const remap = (key: unknown) =>
+      String(key).replace(/\b(need|choices|needLabel|render|caption|note):(\d+)/g, (all, kind: string, n: string) => {
+        const next = maps[kind]?.get(Number(n))
+        return next === undefined ? all : `${kind}:${next}`
+      })
+    for (const n of rows('book_notes', 'project_id = ?', sourceId)) {
+      notes.set(n.id as number, insert('book_notes', n, { project_id: id, page_key: remap(n.page_key) }))
+    }
+    for (const a of rows('book_adjustments', 'project_id = ?', sourceId)) {
+      insert('book_adjustments', a, { project_id: id, page_key: remap(a.page_key), element_id: remap(a.element_id) })
+    }
+    for (const h of rows('book_hidden_pages', 'project_id = ?', sourceId)) insert('book_hidden_pages', h, { project_id: id, page_key: remap(h.page_key) })
+    db.exec('COMMIT')
+
+    // Autre document (design book ↔ devis) : mêmes règles que le choix dans l'étape Client.
+    if (target.kind !== source.kind) updateProject(db, id, { kind: target.kind })
+    return id
+  } catch (e) {
+    db.exec('ROLLBACK')
+    throw e
+  }
 }

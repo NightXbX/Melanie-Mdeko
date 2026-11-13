@@ -1,3 +1,4 @@
+import { Assistant } from './components/Assistant'
 import { useEffect, useState } from 'react'
 import { AppProvider } from './app-context'
 import { ImportSheet } from './components/ImportSheet'
@@ -48,6 +49,14 @@ export function App() {
           </KeepAlive>
           <KeepAlive active={view === 'projects'}>
             <ProjectsView newProjectSignal={newProjectSignal} openRequest={openProject} onImport={(path) => setImporting({ path })} />
+          </KeepAlive>
+          <KeepAlive active={view === 'assistant'}>
+            <div className="assistant-view">
+              <header className="toolbar">
+                <h1 className="toolbar-title">Assistant</h1>
+              </header>
+              <Assistant projectId={null} />
+            </div>
           </KeepAlive>
           {view === 'artisans' && <ArtisansView />}
           {view === 'check' && <CheckView />}

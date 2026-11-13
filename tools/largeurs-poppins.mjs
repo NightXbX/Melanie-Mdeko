@@ -1,4 +1,4 @@
-// Produit src/main/book/poppins-widths.ts : largeur de chaque lettre de Poppins Light (graisse 300), en
+// Produit src/main/book/poppins-widths.ts : largeur de chaque lettre de Poppins (graisses 300 à 500), en
 // millièmes de la taille du texte. Sert à couper un long texte en pages (compte-rendu) sans le mesurer
 // dans un navigateur. Lecture des fichiers WOFF de @fontsource (tables zlib).
 // Usage : node tools/largeurs-poppins.mjs
@@ -56,9 +56,10 @@ function charToGlyph(cmap) {
   throw new Error('cmap introuvable')
 }
 
+function weightWidths(weight) {
 const widths = {}
 for (const subset of ['latin-ext', 'latin']) {
-  const t = tables(`node_modules/@fontsource/poppins/files/poppins-${subset}-300-normal.woff`)
+  const t = tables(`node_modules/@fontsource/poppins/files/poppins-${subset}-${weight}-normal.woff`)
   const em = t.head.readUInt16BE(18)
   const metrics = t.hhea.readUInt16BE(34)
   const advance = (g) => t.hmtx.readUInt16BE(Math.min(g, metrics - 1) * 4)
@@ -68,12 +69,18 @@ for (const subset of ['latin-ext', 'latin']) {
   }
 }
 
-const entries = Object.entries(widths).sort((a, b) => a[0] - b[0])
-const body = entries.map(([c, w]) => `${c}:${w}`).join(',')
+  return Object.entries(widths).sort((a, b) => a[0] - b[0])
+}
+
+const lines = [300, 400, 500].map((weight) => {
+  const entries = weightWidths(weight)
+  console.log(`graisse ${weight} : ${entries.length} caractères`)
+  return `  ${weight}: {${entries.map(([c, w]) => `${c}:${w}`).join(',')}}`
+})
+const NL = String.fromCharCode(10)
 writeFileSync(
   'src/main/book/poppins-widths.ts',
-  `// Fichier produit par tools/largeurs-poppins.mjs : ne pas modifier à la main.\n` +
-    `// Largeur des lettres de Poppins Light, en millièmes de la taille du texte (code du caractère : largeur).\n` +
-    `export const POPPINS_LIGHT: Record<number, number> = {${body}}\n`
+  '// Fichier produit par tools/largeurs-poppins.mjs : ne pas modifier à la main.' + NL +
+    '// Largeur des lettres de Poppins (graisses 300, 400, 500), en millièmes de la taille du texte.' + NL +
+    'export const POPPINS: Record<300 | 400 | 500, Record<number, number>> = {' + NL + lines.join(',' + NL) + NL + '}' + NL
 )
-console.log(`${entries.length} caractères`)

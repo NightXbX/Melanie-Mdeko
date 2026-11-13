@@ -119,7 +119,7 @@ export function bookData(db: DatabaseSync, dataRoot: string, projectId: number):
       .map((id) => artisansById.get(id))
       .filter((a) => a !== undefined)
       .map((a) => ({ trade: a.trade, name: a.name, city: a.city, phone: a.phone })),
-    notes: listNotes(db, projectId),
+    notes: listNotes(db, projectId).map(({ imageId, ...n }) => ({ ...n, image: imageId ? imageRef(db, dataRoot, 'id', imageId) : null })),
     adjustments: listAdjustments(db, projectId),
     hiddenPages: listHiddenPages(db, projectId)
   }

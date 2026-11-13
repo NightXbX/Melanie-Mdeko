@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { Element, Page } from '@shared/book'
 import { bookHtml, exported } from './html'
-import { buildBook, exportedPages, reportLayout, type BookArticle, type BookData } from './layout'
+import { buildBook, exportedPages, reportLayout, type BookArticle, type BookData, type BookNote } from './layout'
+
+const NOTE: BookNote = { id: 5, pageKey: 'render:2', kind: 'text', x: 30, y: 180, w: 90, h: null, image: null, style: {}, text: '' }
 
 const img = { url: 'mdeko://media/x.jpg', path: '/x.jpg', width: 1600, height: 900 }
 let nextId = 1
@@ -133,10 +135,38 @@ describe('design book', () => {
   })
 
   it('pose les annotations sur leur page, modifiables', () => {
-    const pages = buildBook(data({ notes: [{ id: 5, pageKey: 'render:2', x: 30, y: 180, w: 90, text: 'Banquette sur mesure' }] }))
+    const pages = buildBook(data({ notes: [{ ...NOTE, text: 'Banquette sur mesure' }] }))
     const note = byKey(pages, 'render:2').elements.find((e): e is TextElement => e.type === 'text' && e.edit === 'note:5')!
     expect(note.runs[0].text).toBe('Banquette sur mesure')
     expect([note.x, note.y]).toEqual([30, 180])
+  })
+
+  it('dessine les formes et les flèches insérées, avec leur mise en forme', () => {
+    const pages = buildBook(
+      data({
+        notes: [
+          { ...NOTE, id: 6, kind: 'rect', h: 40, style: { fill: '#BFB6A3' } },
+          { ...NOTE, id: 7, kind: 'arrow', h: 6, style: { rotate: 45, line: '#5E4553', lineWidth: 3 } },
+          { ...NOTE, id: 8, text: 'Important', style: { bold: true, italic: true, color: '#5E4553', size: 16 } }
+        ]
+      })
+    )
+    const page = byKey(pages, 'render:2')
+    const el = (id: string) => page.elements.find((e) => e.id === id)!
+    expect(el('note:6')).toMatchObject({ type: 'rect', fill: '#BFB6A3', w: 90, h: 40 })
+    expect(el('note:7')).toMatchObject({ type: 'line', arrow: true, rotate: 45, line: '#5E4553', lineWidth: 3 })
+    expect(el('note:8')).toMatchObject({ type: 'text', style: { size: 16, weight: 500, italic: true, color: '#5E4553' } })
+    const html = bookHtml(exportedPages(pages))
+    expect(html).toContain('<polygon')
+    expect(html).toContain('transform:rotate(45deg)')
+    expect(html).toContain('font-style:italic')
+  })
+
+  it('applique la mise en forme choisie aux textes du book', () => {
+    const pages = buildBook(data({ adjustments: { 'cover|client': { style: { color: '#5E4553', underline: true, bold: true } } } }))
+    const client = pages[0].elements.find((e): e is TextElement => e.id === 'client')!
+    expect(client.style).toMatchObject({ color: '#5E4553', underline: true, weight: 500 })
+    expect(client.adjusted).toBe(true)
   })
 
   it('met m·deko en grand sur la couverture, le client et la date en bas', () => {
@@ -326,7 +356,7 @@ describe('design book', () => {
     expect(sizeOf(8)).toMatchObject({ columns: 2 })
     expect(sizeOf(10).pages).toHaveLength(1)
     // Un peu plus long : deux pages, en reprenant une taille confortable.
-    expect(sizeOf(12)).toMatchObject({ columns: 2, size: 12 })
+    expect(sizeOf(12)).toMatchObject({ columns: 2, size: 14 })
     expect(sizeOf(12).pages).toHaveLength(2)
     // Très long (environ 3 000 mots, 500 par page) : quelques pages seulement.
     expect(sizeOf(60).pages.length).toBeLessThanOrEqual(6)
@@ -334,14 +364,27 @@ describe('design book', () => {
 
   it('découpe le compte-rendu en colonnes qui reprennent tout le texte, dans l’ordre', () => {
     const body = Array.from({ length: 40 }, (_, i) => `Point ${i + 1} : décision prise sur le mobilier et les finitions de la pièce.`).join(NL)
-    const { pages } = reportLayout(body)
-    const parts = pages.flat()
-    // Rien n'est perdu : entre deux colonnes, seulement des espaces ou des retours à la ligne.
-    expect(parts[0].start).toBe(0)
-    expect(parts.at(-1)!.end).toBe(body.length)
-    parts.slice(1).forEach((c, i) => expect(body.slice(parts[i].end, c.start).trim()).toBe(''))
+    const { pages, blocks } = reportLayout(body)
+    // Rien n'est perdu : chaque ligne du texte est montrée une fois, dans l'ordre.
+    const shown = pages.flat(2).map((s) => body.slice(blocks[s.block].start + s.start, blocks[s.block].start + s.end))
+    expect(shown.join(NL)).toBe(body)
     const book = buildBook(data({ report: body }))
     const edits = book.filter((p) => p.key.startsWith('report:')).flatMap((p) => p.elements.filter((e) => e.type === 'text' && e.edit?.startsWith('report:')))
-    expect(edits).toHaveLength(parts.length)
+    expect(edits).toHaveLength(pages.flat(2).length)
+  })
+
+  it('met en forme le Markdown collé depuis ChatGPT', () => {
+    const body = ['# COMPTE RENDU', '**Date :** 5 novembre', '', '## 1. Entrée', '- Dressing sur mesure', '- Porte dérobée', 'a voir&#x20;', '\\-'].join(NL)
+    const page = buildBook(data({ report: body })).find((p) => p.key === 'report:1')!
+    const texts = page.elements.filter((e) => e.type === 'text')
+    const runs = texts.flatMap((e) => (e.type === 'text' ? e.runs : []))
+    const all = runs.map((r) => r.text).join('|')
+    expect(all).not.toMatch(/[#*\\]|&#x20;/)
+    expect(runs.find((r) => r.text === 'Date :')?.weight).toBe(500)
+    expect(texts.find((e) => e.type === 'text' && e.runs[0].text === 'COMPTE RENDU')?.style.size).toBeGreaterThan(15)
+    expect(all).toContain('•|Dressing sur mesure')
+    // Une ligne en gras n'est pas modifiable dans l'aperçu (on perdrait le gras) ; le reste l'est.
+    expect(texts.find((e) => e.type === 'text' && e.runs[0].text === 'Date :')?.edit).toBeUndefined()
+    expect(texts.find((e) => e.type === 'text' && e.runs[0].text === 'Porte dérobée')?.edit).toMatch(/^report:/)
   })
 })

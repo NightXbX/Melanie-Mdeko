@@ -8,6 +8,7 @@ import { migrate, openDatabase, pendingMigrations, schemaVersion } from './db/da
 import { registerIpc } from './ipc'
 import { registerAiIpc } from './ai'
 import { registerHomeByMeIpc } from './homebyme'
+import { registerAssistantIpc } from './assistant'
 import { registerProjectsIpc } from './projects-ipc'
 import { handleMedia, registerMediaScheme } from './media'
 import { attachContextMenu } from './context-menu'
@@ -64,6 +65,7 @@ function start(): void {
   registerProjectsIpc(db, paths)
   registerAiIpc(db, paths)
   registerHomeByMeIpc(db)
+  registerAssistantIpc(db, paths)
   registerUpdates(db, paths)
   buildMenu({
     backupNow: () => backupNow(),

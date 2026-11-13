@@ -4,6 +4,7 @@ import { useApp } from '../app-context'
 import { ArticleCard } from '../components/ArticleCard'
 import { ArticleEditorSheet } from '../components/ArticleEditorSheet'
 import { Icon } from '../components/Icon'
+import { PriceCheck } from '../components/PriceCheck'
 import { Toolbar } from '../components/Toolbar'
 
 const SEVERITY = { error: 'À corriger', warning: 'À regarder', info: 'Pour compléter' }
@@ -159,6 +160,8 @@ export function CheckView() {
             </button>
           )}
         </section>
+
+        <PriceCheck onEdit={setEditing} />
 
         {report.groups.length === 0 && <p className="section-note">Aucune anomalie trouvée dans la shopping list.</p>}
         {report.groups.map((g) => (

@@ -51,7 +51,7 @@ describe('assistant IA : connecteur OpenRouter', () => {
   })
 
   it('traduit les erreurs en français', async () => {
-    await expect(openRouterProvider('cle', () => reply(402, {})).edit({ model: 'm', prompt: 'p', images: [] })).rejects.toThrow('plus de crédit')
+    await expect(openRouterProvider('cle', () => reply(402, {})).edit({ model: 'm', prompt: 'p', images: [] })).rejects.toThrow('crédit OpenRouter est épuisé')
     await expect(openRouterProvider('cle', () => reply(200, { data: [] })).edit({ model: 'm', prompt: 'p', images: [] })).rejects.toThrow('pas renvoyé d’image')
   })
 })
@@ -84,8 +84,8 @@ describe('assistant IA : versions des rendus', () => {
   })
 
   it('enregistre les moteurs et le plafond', () => {
-    expect(getAiSettings(db)).toEqual({ models: ['google/gemini-3.1-flash-image', 'openai/gpt-image-2'], capCents: 1000 })
+    expect(getAiSettings(db)).toMatchObject({ models: ['google/gemini-3.1-flash-image', 'openai/gpt-image-2'], capCents: 1000 })
     saveAiSettings(db, { models: [' openai/gpt-image-2 ', '', 'openai/gpt-image-2'], capCents: 500 })
-    expect(getAiSettings(db)).toEqual({ models: ['openai/gpt-image-2'], capCents: 500 })
+    expect(getAiSettings(db)).toMatchObject({ models: ['openai/gpt-image-2'], capCents: 500 })
   })
 })

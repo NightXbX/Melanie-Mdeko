@@ -6,6 +6,7 @@ import {
   addNeed,
   adjustElement,
   deletePaint,
+  duplicateProject,
   normalizeHex,
   removeMarker,
   replaceRenderImage,
@@ -15,6 +16,8 @@ import {
   resetPageAdjustments,
   setNeedImages,
   addNote,
+  addObject,
+  styleNote,
   editBookText,
   listNotes,
   moveNote,
@@ -229,10 +232,35 @@ describe('modifications dans l’aperçu', () => {
     const noteId = addNote(db, id, 'render:1', 40, 180)
     editBookText(db, id, `note:${noteId}`, 'Banquette sur mesure')
     moveNote(db, noteId, 60, 185)
-    expect(listNotes(db, id)).toEqual([{ id: noteId, pageKey: 'render:1', x: 60, y: 185, w: 90, text: 'Banquette sur mesure' }])
+    expect(listNotes(db, id)).toEqual([
+      { id: noteId, pageKey: 'render:1', kind: 'text', x: 60, y: 185, w: 90, h: null, imageId: null, style: {}, text: 'Banquette sur mesure' }
+    ])
     // Une annotation vidée disparaît.
     editBookText(db, id, `note:${noteId}`, '  ')
     expect(listNotes(db, id)).toEqual([])
+  })
+
+  it('insère des formes et garde leur mise en forme (valeurs sûres seulement)', () => {
+    const id = createProject(db, '', 'Durand')
+    const arrow = addObject(db, id, 'cover', 'arrow')
+    styleNote(db, arrow, { rotate: 405, line: '#5E4553' })
+    styleNote(db, arrow, { lineWidth: 3, color: 'red;background:url(x)' } as never)
+    moveNote(db, arrow, 20, 30, 70, 8)
+    expect(listNotes(db, id)[0]).toMatchObject({ kind: 'arrow', x: 20, y: 30, w: 70, h: 8, style: { rotate: 45, line: '#5E4553', lineWidth: 3 } })
+    expect(listNotes(db, id)[0].style).not.toHaveProperty('color')
+    // Une forme sans texte n'est pas supprimée quand on vide son texte.
+    editBookText(db, id, `note:${arrow}`, '')
+    expect(listNotes(db, id)).toHaveLength(1)
+    expect(() => addObject(db, id, 'cover', 'image')).toThrow()
+  })
+
+  it('garde la mise en forme des textes du book, effacée par « Remettre à sa place »', () => {
+    const id = createProject(db, '', 'Durand')
+    adjustElement(db, id, 'cover', 'client', { style: { bold: true } })
+    adjustElement(db, id, 'cover', 'client', { style: { color: '#2B3840' } })
+    expect(listAdjustments(db, id)).toEqual({ 'cover|client': { style: { bold: true, color: '#2B3840' } } })
+    adjustElement(db, id, 'cover', 'client', null)
+    expect(listAdjustments(db, id)).toEqual({})
   })
 
   it('garde les ajustements de l’aperçu et les textes propres au book', () => {
@@ -268,5 +296,31 @@ describe('modifications dans l’aperçu', () => {
   it('range les teintes sans marque dans « Teintes et couleurs »', () => {
     createPaint(db, { brand: ' ', name: 'Lin', reference: null, hex: '#eeeeee' })
     expect(listPaints(db)[0].brand).toBe('Teintes et couleurs')
+  })
+})
+
+describe('duplication', () => {
+  it('copie tout le projet pour un autre client, sans toucher à l’original', () => {
+    const id = createProject(db, 'Mme', 'Durand')
+    setRooms(db, id, ['Salon', 'Chambre'])
+    const salon = getProject(db, id)!.rooms[0].id
+    const need = addNeed(db, id, 1, salon)
+    updateProject(db, id, { report: '# Réunion' })
+    adjustElement(db, id, `need:${need}`, 'title', { x: 10 })
+    setPageHidden(db, id, 'toc', true)
+
+    const copy = duplicateProject(db, id, { clientTitle: 'M.', clientName: 'Martin', kind: 'quote' })
+    const p = getProject(db, copy)!
+    expect(p).toMatchObject({ clientTitle: 'M.', clientName: 'Martin', kind: 'quote', report: '# Réunion' })
+    expect(p.rooms.map((r) => r.name)).toEqual(['Salon', 'Chambre'])
+    // Le besoin est copié, rangé dans la pièce copiée ; les réglages de l'aperçu suivent le nouveau besoin.
+    expect(p.needs).toHaveLength(1)
+    expect(p.needs[0].roomId).toBe(p.rooms[0].id)
+    expect(p.needs[0].choice?.id).toBe(1)
+    expect(Object.keys(listAdjustments(db, copy))).toEqual([`need:${p.needs[0].id}|title`])
+    // Devis : ses pages de présentation sont retirées.
+    expect(listHiddenPages(db, copy)).toContain('toc')
+    expect(getProject(db, id)!.kind).toBe('book')
+    expect(getProject(db, id)!.needs[0].id).toBe(need)
   })
 })

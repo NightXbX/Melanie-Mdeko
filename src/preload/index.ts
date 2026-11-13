@@ -1,3 +1,4 @@
+import { ASSISTANT_METHODS, type AssistantApi } from '@shared/assistant'
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
 import { AI_METHODS, HOMEBYME_METHODS, IPC, PROJECT_METHODS, type AiApi, type HomeByMeApi, type LinkCheckProgress, type MdekoApi, type MenuCommand, type ProjectsApi, type UpdateInfo } from '@shared/api'
 
@@ -11,9 +12,14 @@ const homebyme = Object.fromEntries(
   HOMEBYME_METHODS.map((method) => [method, (...args: unknown[]) => ipcRenderer.invoke(IPC.homebyme, method, ...args)])
 ) as unknown as HomeByMeApi
 
+const assistant = Object.fromEntries(
+  ASSISTANT_METHODS.map((method) => [method, (...args: unknown[]) => ipcRenderer.invoke(IPC.assistant, method, ...args)])
+) as unknown as AssistantApi
+
 const api: MdekoApi = {
   projects,
   ai,
+  assistant,
   homebyme,
   getAppInfo: () => ipcRenderer.invoke(IPC.getAppInfo),
   openDataFolder: () => ipcRenderer.invoke(IPC.openDataFolder),
@@ -61,6 +67,11 @@ const api: MdekoApi = {
   checkGroupIds: (groupId) => ipcRenderer.invoke(IPC.checkGroupIds, groupId),
   checkLinks: () => ipcRenderer.invoke(IPC.checkLinks),
   stopLinkCheck: () => ipcRenderer.invoke(IPC.stopLinkCheck),
+  onPriceProgress: (listener) => {
+    const handler = (_e: IpcRendererEvent, p: Parameters<typeof listener>[0]) => listener(p)
+    ipcRenderer.on(IPC.priceProgress, handler)
+    return () => ipcRenderer.removeListener(IPC.priceProgress, handler)
+  },
   onLinkProgress: (listener) => {
     const handler = (_e: IpcRendererEvent, progress: LinkCheckProgress) => listener(progress)
     ipcRenderer.on(IPC.linkProgress, handler)

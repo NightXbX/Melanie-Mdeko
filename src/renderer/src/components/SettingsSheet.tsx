@@ -12,6 +12,10 @@ export function SettingsSheet({ onClose }: { onClose(): void }) {
   const [qrImageId, setQrImageId] = useState<number | undefined>()
   const [ai, setAi] = useState<AiStatus | null>(null)
   const [models, setModels] = useState<string[]>([])
+  const [chatModel, setChatModel] = useState('')
+  const [audioModel, setAudioModel] = useState('')
+  const [companyMemory, setCompanyMemory] = useState('')
+  const [chatCatalog, setChatCatalog] = useState<{ id: string; name: string }[]>([])
   const [cap, setCap] = useState('')
   const [key, setKey] = useState('')
   const [catalog, setCatalog] = useState<{ id: string; name: string }[]>([])
@@ -21,8 +25,12 @@ export function SettingsSheet({ onClose }: { onClose(): void }) {
     setAi(status)
     setModels([status.settings.models[0] ?? '', status.settings.models[1] ?? ''])
     setCap(String(status.settings.capCents / 100))
+    setChatModel(status.settings.chatModel)
+    setAudioModel(status.settings.audioModel)
+    setCompanyMemory(status.settings.companyMemory)
     // Liste des moteurs d'images proposés par OpenRouter (quand la clé est là).
     if (status.hasKey) void window.mdeko.ai.listModels().then(setCatalog, () => setCatalog([]))
+    if (status.hasKey) void window.mdeko.assistant.listModels().then(setChatCatalog, () => setChatCatalog([]))
   }
 
   useEffect(() => {
@@ -37,7 +45,7 @@ export function SettingsSheet({ onClose }: { onClose(): void }) {
     const { reviewQrUrl: _qr, ...rest } = s
     await window.mdeko.projects.saveSettings({ ...rest, reviewQrImageId: qrImageId })
     const capCents = Math.round(Number(cap.replace(',', '.')) * 100)
-    await window.mdeko.ai.saveSettings({ models, ...(capCents > 0 ? { capCents } : {}) })
+    await window.mdeko.ai.saveSettings({ models, chatModel, audioModel, companyMemory, ...(capCents > 0 ? { capCents } : {}) })
     if (key.trim()) {
       try {
         await window.mdeko.ai.setKey(key)
@@ -112,7 +120,7 @@ export function SettingsSheet({ onClose }: { onClose(): void }) {
             </div>
           </div>
 
-          <h3>Assistant de retouche (IA)</h3>
+          <h3>Assistant et retouche des rendus (IA)</h3>
           {ai && (
             <>
               <label className="field">
@@ -165,14 +173,43 @@ export function SettingsSheet({ onClose }: { onClose(): void }) {
               </datalist>
               <div className="field-row">
                 <label className="field">
-                  <span>Plafond par mois, en dollars</span>
+                  <span>Budget par mois, en dollars (images, assistant et vocaux)</span>
                   <input inputMode="decimal" value={cap} onChange={(e) => setCap(e.target.value)} />
                 </label>
                 <div className="field">
                   <span>Dépensé ce mois-ci</span>
-                  <p className="settings-value">{dollars(ai.spentCents)}</p>
+                  <p className="settings-value">
+                    {dollars(ai.spentCents)}
+                    {ai.creditCents !== null && ` · crédit restant sur OpenRouter : ${dollars(ai.creditCents)}`}
+                  </p>
                 </div>
               </div>
+              <div className="field-row">
+                <label className="field">
+                  <span>Modèle de l’assistant</span>
+                  <input list="mdeko-chat-models" value={chatModel} onChange={(e) => setChatModel(e.target.value)} />
+                </label>
+                <label className="field">
+                  <span>Modèle qui écoute les vocaux</span>
+                  <input list="mdeko-chat-models" value={audioModel} onChange={(e) => setAudioModel(e.target.value)} />
+                </label>
+              </div>
+              <datalist id="mdeko-chat-models">
+                {chatCatalog.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </datalist>
+              <label className="field">
+                <span>Ce que l’assistant doit savoir de votre entreprise (relu dans chaque discussion)</span>
+                <textarea
+                  rows={6}
+                  value={companyMemory}
+                  placeholder="Votre façon de travailler, vos tarifs, vos fournisseurs préférés, le ton de vos comptes-rendus…"
+                  onChange={(e) => setCompanyMemory(e.target.value)}
+                />
+              </label>
               {ai.score.length > 0 && (
                 <div className="field">
                   <span>Duel : propositions gardées</span>

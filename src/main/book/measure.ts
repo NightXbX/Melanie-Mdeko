@@ -1,16 +1,24 @@
-import { POPPINS_LIGHT } from './poppins-widths'
+import { POPPINS } from './poppins-widths'
 
-// Mesure d'un texte en Poppins Light, sans navigateur : sert à couper un long texte en colonnes et en pages.
+// Mesure d'un texte en Poppins, sans navigateur : sert à couper un long texte en colonnes et en pages.
 
 const PT = 25.4 / 72 // mm par point
 // Marge de sécurité : PowerPoint et Chromium ne coupent pas les lignes exactement au même endroit.
 const SAFETY = 0.94
 
-const charWidth = (c: string) => POPPINS_LIGHT[c.charCodeAt(0)] ?? 650
+export type MeasuredWeight = 300 | 400 | 500
+// Graisse de chaque lettre (selon sa place dans le texte) : le gras est plus large.
+export type WeightAt = (index: number) => MeasuredWeight
 
-export function textWidth(s: string, size: number): number {
+const charWidth = (c: string, weight: MeasuredWeight) => POPPINS[weight][c.charCodeAt(0)] ?? 650
+
+export function textWidth(s: string, size: number, weight: MeasuredWeight | WeightAt = 300, from = 0): number {
   let w = 0
-  for (const c of s) w += charWidth(c)
+  let i = from
+  for (const c of s) {
+    w += charWidth(c, typeof weight === 'number' ? weight : weight(i))
+    i += c.length
+  }
   return (w / 1000) * size * PT
 }
 
@@ -22,9 +30,9 @@ export interface TextLine {
 
 // Coupe le texte en lignes comme le navigateur (mot par mot, retours à la ligne gardés). Une ligne vide
 // (entre deux paragraphes) a `start === end`.
-export function wrapLines(text: string, width: number, size: number): TextLine[] {
+export function wrapLines(text: string, width: number, size: number, weight: MeasuredWeight | WeightAt = 300): TextLine[] {
   const max = width * SAFETY
-  const space = textWidth(' ', size)
+  const space = textWidth(' ', size, 300)
   const lines: TextLine[] = []
   let offset = 0
   for (const paragraph of text.split('\n')) {
@@ -35,7 +43,7 @@ export function wrapLines(text: string, width: number, size: number): TextLine[]
     for (const m of words) {
       let start = offset + m.index
       let word = m[0]
-      let w = textWidth(word, size)
+      let w = textWidth(word, size, weight, start)
       if (line && used + space + w <= max) {
         line.end = start + word.length
         used += space + w
@@ -45,11 +53,11 @@ export function wrapLines(text: string, width: number, size: number): TextLine[]
       // Mot plus long que la ligne (adresse web…) : coupé lettre à lettre.
       while (w > max) {
         let n = 1
-        while (n < word.length && textWidth(word.slice(0, n + 1), size) <= max) n++
+        while (n < word.length && textWidth(word.slice(0, n + 1), size, weight, start) <= max) n++
         lines.push({ start, end: start + n })
         start += n
         word = word.slice(n)
-        w = textWidth(word, size)
+        w = textWidth(word, size, weight, start)
       }
       line = { start, end: start + word.length }
       used = w

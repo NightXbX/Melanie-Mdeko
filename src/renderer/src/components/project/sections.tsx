@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { DEFAULT_PAINT_BRAND, DOCUMENT_NAMES, type Artisan, type DocumentKind, type Paint } from '@shared/projects'
 import { useApp } from '../../app-context'
 import { useAutosave } from '../../lib/autosave'
 import { moved, useSortable } from '../../lib/sortable'
 import { Icon } from '../Icon'
+import { RichText } from '../RichText'
+import { DuplicateSheet } from './DuplicateSheet'
 import type { SectionProps } from './ProjectEditor'
 
 export function SectionHeader({ title, children }: { title: string; children?: ReactNode }) {
@@ -17,8 +19,9 @@ export function SectionHeader({ title, children }: { title: string; children?: R
 
 // --- Client -------------------------------------------------------------------------------------
 
-export function ClientSection({ project, reload, onDeleted }: SectionProps & { onDeleted(): void }) {
+export function ClientSection({ project, reload, onDeleted, onDuplicated }: SectionProps & { onDeleted(): void; onDuplicated(id: number): void }) {
   const { refresh } = useApp()
+  const [duplicating, setDuplicating] = useState(false)
   const [form, setForm] = useState({
     clientTitle: project.clientTitle,
     clientName: project.clientName,
@@ -102,9 +105,24 @@ export function ClientSection({ project, reload, onDeleted }: SectionProps & { o
           : 'Le design book contient toutes les pages.'}{' '}
         Dans l’aperçu, chaque page peut être retirée ou remise.
       </p>
-      <button type="button" className="button button-danger section-danger" onClick={() => void remove()}>
-        Supprimer le projet…
-      </button>
+      <div className="section-danger client-actions">
+        <button type="button" className="button" onClick={() => setDuplicating(true)}>
+          Dupliquer le projet…
+        </button>
+        <button type="button" className="button button-danger" onClick={() => void remove()}>
+          Supprimer le projet…
+        </button>
+      </div>
+      {duplicating && (
+        <DuplicateSheet
+          source={project}
+          onCancel={() => setDuplicating(false)}
+          onDone={(id) => {
+            setDuplicating(false)
+            onDuplicated(id)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -183,27 +201,13 @@ export function WishesSection({ project, settings, reload }: SectionProps) {
 
 export function ReportSection({ project, reload }: SectionProps) {
   const [text, setText] = useState(project.report)
-  const editing = useRef(false)
   useAutosave(text, (t) => void window.mdeko.projects.update(project.id, { report: t }).then(reload))
-  // Texte retouché dans l'aperçu : on le reprend, sauf pendant la saisie ici.
-  useEffect(() => {
-    if (!editing.current) setText(project.report)
-  }, [project.report])
+  useEffect(() => setText(project.report), [project.report])
 
   return (
     <div className="section">
       <SectionHeader title="Compte-rendu" />
-      <label className="field">
-        <span>Compte-rendu de réunion</span>
-        <textarea
-          rows={18}
-          value={text}
-          placeholder="Ce qui a été dit et décidé avec le client…"
-          onFocus={() => (editing.current = true)}
-          onBlur={() => (editing.current = false)}
-          onChange={(e) => setText(e.target.value)}
-        />
-      </label>
+      <RichText value={text} onChange={setText} placeholder="Ce qui a été dit et décidé avec le client… (un texte copié depuis ChatGPT garde ses titres et son gras)" />
       <p className="section-note">
         Il prend place dans le design book juste après « Vos envies ». La mise en page s’adapte à la longueur du texte ;
         laissé vide, il n’y a pas de page.

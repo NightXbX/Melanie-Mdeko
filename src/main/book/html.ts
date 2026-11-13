@@ -6,8 +6,12 @@ import ext200 from '@fontsource/poppins/files/poppins-latin-ext-200-normal.woff2
 import ext300 from '@fontsource/poppins/files/poppins-latin-ext-300-normal.woff2?inline'
 import ext400 from '@fontsource/poppins/files/poppins-latin-ext-400-normal.woff2?inline'
 import ext500 from '@fontsource/poppins/files/poppins-latin-ext-500-normal.woff2?inline'
+import italic200 from '@fontsource/poppins/files/poppins-latin-200-italic.woff2?inline'
+import italic300 from '@fontsource/poppins/files/poppins-latin-300-italic.woff2?inline'
+import italic400 from '@fontsource/poppins/files/poppins-latin-400-italic.woff2?inline'
+import italic500 from '@fontsource/poppins/files/poppins-latin-500-italic.woff2?inline'
 import { COLORS, PAGE } from './charte'
-import type { Element, Page, Run } from '@shared/book'
+import { lineGeometry, type Element, type Page, type Run } from '@shared/book'
 
 // Plages Unicode de Fontsource : latin (dont œ, €) et latin étendu.
 const LATIN =
@@ -28,7 +32,16 @@ const FONTS = (
       `@font-face{font-family:Poppins;font-weight:${w};src:url(${latin}) format('woff2');unicode-range:${LATIN}}` +
       `@font-face{font-family:Poppins;font-weight:${w};src:url(${ext}) format('woff2');unicode-range:${LATIN_EXT}}`
   )
-  .join('')
+  .join('') +
+  // Italiques (bouton I de l'aperçu) : vraies italiques de Poppins, pour les lettres latines.
+  ([
+    [200, italic200],
+    [300, italic300],
+    [400, italic400],
+    [500, italic500]
+  ] as const)
+    .map(([w, file]) => `@font-face{font-family:Poppins;font-style:italic;font-weight:${w};src:url(${file}) format('woff2');unicode-range:${LATIN}}`)
+    .join('')
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
@@ -36,7 +49,14 @@ const box = (e: { x: number; y: number; w: number; h: number }) =>
   `left:${e.x.toFixed(2)}mm;top:${e.y.toFixed(2)}mm;width:${e.w.toFixed(2)}mm;height:${e.h.toFixed(2)}mm`
 
 function run(r: Run): string {
-  const style = [r.color && `color:${r.color}`, r.weight && `font-weight:${r.weight}`].filter(Boolean).join(';')
+  const style = [
+    r.color && `color:${r.color}`,
+    r.weight && `font-weight:${r.weight}`,
+    r.italic !== undefined && `font-style:${r.italic ? 'italic' : 'normal'}`,
+    r.underline !== undefined && `text-decoration:${r.underline ? 'underline' : 'none'}`
+  ]
+    .filter(Boolean)
+    .join(';')
   const content = esc(r.text).replace(/\n/g, '<br>')
   return style ? `<span style="${style}">${content}</span>` : content
 }
@@ -47,7 +67,9 @@ function element(e: Element): string {
       return `<img class="el" src="${esc(e.image.url)}" style="${box(e)}">`
     case 'rect':
     case 'ellipse':
-      return `<div class="el" style="${box(e)};${e.fill ? `background:${e.fill};` : ''}${e.line ? `border:0.25mm solid ${e.line};` : ''}${e.type === 'ellipse' ? 'border-radius:50%;' : ''}"></div>`
+      return `<div class="el" style="${box(e)};${e.fill ? `background:${e.fill};` : ''}${e.line ? `border:${lineMm(e.lineWidth)}mm solid ${e.line};` : ''}${e.type === 'ellipse' ? 'border-radius:50%;' : ''}"></div>`
+    case 'line':
+      return lineSvg(e)
     case 'text': {
       const s = e.style
       const justify = { top: 'flex-start', middle: 'center', bottom: 'flex-end' }[s.valign ?? 'top']
@@ -60,7 +82,9 @@ function element(e: Element): string {
         `justify-content:${justify}`,
         `line-height:${s.lineHeight ?? 1.3}`,
         s.letterSpacing ? `letter-spacing:${s.letterSpacing}pt` : '',
-        e.rotate ? `transform:rotate(-${360 - e.rotate}deg)` : ''
+        e.rotate ? `transform:rotate(-${360 - e.rotate}deg)` : '',
+        s.italic ? 'font-style:italic' : '',
+        s.underline ? 'text-decoration:underline' : ''
       ]
         .filter(Boolean)
         .join(';')
@@ -69,6 +93,20 @@ function element(e: Element): string {
       return `<div class="el text" style="${css}"><div>${inner}</div></div>`
     }
   }
+}
+
+// Épaisseur d'un trait : pt → mm (0,25 mm pour les cadres de la charte).
+const lineMm = (pt: number | undefined) => (pt ? pt * 0.3528 : 0.25).toFixed(2)
+
+// Trait ou flèche : SVG à la taille de la boîte, tourné autour de son centre (même dessin que l'aperçu).
+function lineSvg(e: Extract<Element, { type: 'line' }>): string {
+  const g = lineGeometry(e)
+  const color = e.line ?? COLORS.text
+  const head = e.arrow
+    ? `<polygon points="${(e.w - g.head).toFixed(2)},${(g.y - g.head / 2).toFixed(2)} ${e.w.toFixed(2)},${g.y.toFixed(2)} ${(e.w - g.head).toFixed(2)},${(g.y + g.head / 2).toFixed(2)}" fill="${color}"/>`
+    : ''
+  const rotate = e.rotate ? `transform:rotate(${e.rotate}deg);` : ''
+  return `<svg class="el" viewBox="0 0 ${e.w.toFixed(2)} ${e.h.toFixed(2)}" style="${box(e)};overflow:visible;${rotate}"><line x1="0" y1="${g.y.toFixed(2)}" x2="${g.end.toFixed(2)}" y2="${g.y.toFixed(2)}" stroke="${color}" stroke-width="${g.width.toFixed(2)}"/>${head}</svg>`
 }
 
 // Les textes vides proposés à la saisie (légende, annotation) n'apparaissent pas dans le book exporté.

@@ -176,6 +176,42 @@ function supplierFor(db: DatabaseSync, url: string): string | null {
 
 // Page produit : d'abord une simple lecture (rapide), puis, si le site ne répond pas ou construit sa page
 // par script, une fenêtre invisible qui l'ouvre comme un navigateur. null : rien de lisible.
+// HTML d'une page produit, pour la vérification des prix (même méthode : lecture simple, sinon fenêtre invisible).
+export async function readPageHtml(url: string): Promise<string | null> {
+  if (!/^https?:\/\//i.test(url)) return null
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 15000)
+  try {
+    const response = await net.fetch(url, { redirect: 'follow', signal: controller.signal, headers: BROWSER_HEADERS })
+    if (response.status === 404 || response.status === 410) return '<title>Page introuvable (erreur 404)</title>'
+    if (response.ok && (response.headers.get('content-type') ?? '').includes('html')) {
+      const html = await response.text()
+      // Une page construite par script n'a presque pas de texte : on l'ouvre comme un navigateur.
+      if (html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, '').trim().length > 1500) return html
+    }
+  } catch {
+    // on essaie avec la fenêtre invisible
+  } finally {
+    clearTimeout(timer)
+  }
+  const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, partition: 'lecture-produit', images: false } })
+  win.webContents.setAudioMuted(true)
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  win.webContents.session.on('will-download', (e) => e.preventDefault())
+  try {
+    await Promise.race([
+      win.loadURL(url, { userAgent: BROWSER_HEADERS['User-Agent'] }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('délai dépassé')), 25000))
+    ])
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    return (await win.webContents.executeJavaScript('document.documentElement.outerHTML')) as string
+  } catch {
+    return null
+  } finally {
+    win.destroy()
+  }
+}
+
 async function readProductPage(url: string): Promise<ProductInfo | null> {
   if (!/^https?:\/\//i.test(url)) return null
   const controller = new AbortController()

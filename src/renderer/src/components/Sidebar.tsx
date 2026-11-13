@@ -2,7 +2,7 @@ import { Icon, type IconName } from './Icon'
 import { SaveButton } from './SaveButton'
 import { UpdateBar } from './UpdateBar'
 
-export type View = 'shopping' | 'projects' | 'artisans' | 'check' | 'trash'
+export type View = 'shopping' | 'projects' | 'assistant' | 'artisans' | 'check' | 'trash'
 
 interface Props {
   current: View
@@ -30,6 +30,7 @@ export function Sidebar({ current, onSelect, onSettings }: Props) {
         <div className="sidebar-section">
           {item('shopping', 'bag', 'Shopping list')}
           {item('projects', 'folder', 'Projets')}
+          {item('assistant', 'chat', 'Assistant')}
           {item('artisans', 'people', 'Artisans')}
         </div>
         <div className="sidebar-section sidebar-bottom">

@@ -1,5 +1,6 @@
 // Contrat entre le processus principal et l'interface (exposé via le preload).
-import type { BookAdjustment, Page } from './book'
+import type { AssistantApi, PriceCheckProgress } from './assistant'
+import type { BookAdjustment, DeletedNote, ObjectKind, ObjectStyle, Page } from './book'
 import type { CropRect } from './crop'
 import type {
   Artisan,
@@ -96,6 +97,8 @@ export interface ProjectsApi {
   create(clientTitle: string, clientName: string, kind?: DocumentKind): Promise<number>
   get(id: number): Promise<Project | null>
   update(id: number, patch: ProjectPatch): Promise<void>
+  // Copie complète pour un autre client ou un autre document (design book ↔ devis) ; renvoie le nouveau projet.
+  duplicate(id: number, target: { clientTitle: string; clientName: string; kind: DocumentKind }): Promise<number>
   trash(id: number): Promise<void>
   restore(id: number): Promise<void>
   setRooms(id: number, names: string[]): Promise<void>
@@ -132,11 +135,17 @@ export interface ProjectsApi {
   pages(id: number): Promise<Page[]>
   editText(id: number, key: string, text: string): Promise<void>
   addNote(id: number, pageKey: string, x: number, y: number): Promise<number>
-  moveNote(noteId: number, x: number, y: number, w?: number): Promise<void>
-  adjust(id: number, pageKey: string, elementId: string, patch: BookAdjustment | null): Promise<void>
+  moveNote(noteId: number, x: number, y: number, w?: number, h?: number): Promise<void>
+  // Objet inséré depuis la barre d'outils de l'aperçu (texte, image, forme) ; renvoie son identifiant d'annotation.
+  addObject(id: number, pageKey: string, kind: ObjectKind, at?: { x?: number; y?: number; imageId?: number; ratio?: number }): Promise<number>
+  styleNote(noteId: number, style: ObjectStyle, replace?: boolean): Promise<ObjectStyle>
+  // Renvoie l'ajustement d'avant, pour ⌘Z (restoreAdjustment).
+  adjust(id: number, pageKey: string, elementId: string, patch: BookAdjustment | null): Promise<BookAdjustment | null>
+  restoreAdjustment(id: number, pageKey: string, elementId: string, adjustment: BookAdjustment | null): Promise<void>
   resetPage(id: number, pageKey: string): Promise<void>
   setPageHidden(id: number, pageKey: string, hidden: boolean): Promise<void>
-  deleteNote(noteId: number): Promise<void>
+  deleteNote(noteId: number): Promise<DeletedNote | null>
+  restoreNote(note: DeletedNote): Promise<void>
   export(id: number, format: BookFormat): Promise<string | null> // null : enregistrement annulé
   // Crée le book (rangé dans le dossier du projet) et prépare le mail dans Mail ; renvoie les fichiers joints.
   prepareMail(id: number, mail: MailRequest): Promise<{ files: string[]; inMail: boolean }>
@@ -184,7 +193,10 @@ export const HOMEBYME_METHODS = ['read', 'remember', 'guessCategory'] as const s
 
 export interface AiSettings {
   models: string[] // 1 moteur, ou 2 pour le duel
-  capCents: number // plafond de dépense du mois
+  capCents: number // plafond de dépense du mois (images, discussion, vocaux et vérifications ensemble)
+  chatModel: string // modèle de l'assistant (discussion, comptes-rendus, vérification des prix)
+  audioModel: string // modèle qui transcrit les vocaux
+  companyMemory: string // ce que l'assistant doit savoir de l'entreprise (relu à chaque discussion)
 }
 
 export interface AiStatus {
@@ -192,6 +204,7 @@ export interface AiStatus {
   canStoreKey: boolean // le Trousseau (Mac) ou le coffre de Windows est disponible
   settings: AiSettings
   spentCents: number // ce mois-ci
+  creditCents: number | null // crédit restant sur le compte OpenRouter (null : inconnu)
   estimateCents: number // coût probable d'une demande (toutes propositions comprises)
   score: { model: string; kept: number; proposed: number }[]
 }
@@ -350,6 +363,7 @@ export interface MdekoApi {
   projects: ProjectsApi
   ai: AiApi
   homebyme: HomeByMeApi
+  assistant: AssistantApi
   getAppInfo(): Promise<AppInfo>
   openDataFolder(): Promise<void>
   backupNow(): Promise<string>
@@ -386,6 +400,7 @@ export interface MdekoApi {
   checkLinks(): Promise<LinkCheckProgress>
   stopLinkCheck(): Promise<void>
   onLinkProgress(listener: (progress: LinkCheckProgress) => void): () => void
+  onPriceProgress(listener: (progress: PriceCheckProgress) => void): () => void
   showDatabase(): Promise<void>
   checkUpdate(): Promise<UpdateInfo | null>
   installUpdate(): Promise<void>
@@ -427,6 +442,7 @@ export const IPC = {
   checkLinks: 'check:links',
   stopLinkCheck: 'check:stop-links',
   linkProgress: 'check:link-progress',
+  priceProgress: 'check:price-progress',
   showDatabase: 'app:show-database',
   checkUpdate: 'update:check',
   installUpdate: 'update:install',
@@ -435,13 +451,14 @@ export const IPC = {
   // Projets : un canal unique, la méthode appelée est passée en premier argument.
   projects: 'projects:call',
   ai: 'ai:call',
-  homebyme: 'homebyme:call'
+  homebyme: 'homebyme:call',
+  assistant: 'assistant:call'
 } as const
 
 export const PROJECT_METHODS = [
-  'list', 'create', 'get', 'update', 'trash', 'restore', 'setRooms', 'addRenders', 'updateRender', 'removeRender',
+  'list', 'create', 'get', 'update', 'duplicate', 'trash', 'restore', 'setRooms', 'addRenders', 'updateRender', 'removeRender',
   'reorder', 'addNeed', 'setNeedRoom', 'setNeedChoice', 'setNeedAlternatives', 'setNeedImages', 'removeNeed', 'setNeedQuantity', 'setTrendImages', 'listInspirationImages', 'listPaints', 'createPaint',
   'updatePaint', 'deletePaint', 'countPaintProjects', 'updatePaintBrand', 'replaceRenderImage', 'cropRender', 'addMarker', 'moveMarker', 'removeMarker',
-  'listArtisans', 'saveArtisan', 'setLinks', 'getSettings', 'saveSettings', 'pages', 'editText', 'addNote', 'moveNote',
+  'listArtisans', 'saveArtisan', 'setLinks', 'getSettings', 'saveSettings', 'pages', 'editText', 'addNote', 'moveNote', 'addObject', 'styleNote', 'restoreNote', 'restoreAdjustment',
   'deleteNote', 'adjust', 'resetPage', 'setPageHidden', 'export', 'prepareMail', 'openFolder'
 ] as const satisfies readonly (keyof ProjectsApi)[]

@@ -1,4 +1,5 @@
-import { textKey, type BookAdjustment, type Box, type Element, type ImageRef, type Page, type Run, type TextStyle } from '@shared/book'
+import { textKey, type BookAdjustment, type Box, type Element, type ImageRef, type ObjectKind, type ObjectStyle, type Page, type Run, type TextStyle, type Weight } from '@shared/book'
+import { cleanMarkdown, editableAsPlain, parseMarkdown, plainText, type Block, type BlockKind, type InlineRun } from '@shared/markdown'
 import type { DocumentKind } from '@shared/projects'
 import { BOTTOM, COLORS, MARGIN, PAGE, RENDER, TEXT_BLOCK, WATERMARK } from './charte'
 import { lineHeightMm, wrapLines, type TextLine } from './measure'
@@ -29,12 +30,17 @@ export interface BookNeed {
   alternatives: BookArticle[]
 }
 
+// Annotation ou objet inséré par Mélanie dans l'aperçu (texte, image, forme), avec sa mise en forme.
 export interface BookNote {
   id: number
   pageKey: string
+  kind: ObjectKind
   x: number
   y: number
   w: number
+  h: number | null
+  image: ImageRef | null
+  style: ObjectStyle
   text: string
 }
 
@@ -221,65 +227,161 @@ function textPage(key: string, body: string, edit: string, signature: string | n
 
 // Compte-rendu de réunion : le texte doit tenir proprement quelle que soit sa longueur, sans multiplier les
 // pages. On essaie d'abord une colonne en grand, puis on réduit la taille, puis deux colonnes ; au-delà d'une
-// page, deux colonnes à la plus grande taille qui donne le moins de pages possible. Chaque colonne reste
-// modifiable dans l'aperçu (« report:<début>:<fin> » : sa place dans le texte complet).
-const REPORT = { top: 28, height: 160, lineHeight: 1.5, gap: 14 }
+// page, deux colonnes à la plus grande taille qui donne le moins de pages possible. Le texte est en Markdown
+// (titres, listes, gras) : chaque bloc devient un texte placé, mesuré ligne par ligne. Un bloc sans gras
+// reste modifiable dans l'aperçu (« report:<début>:<fin> » : sa place dans le texte complet).
+const REPORT = { top: 28, height: 160, gap: 14, lineHeight: 1.45, headingLineHeight: 1.25 }
 const REPORT_ONE_COLUMN = { x: 40, w: 217, sizes: [15, 14, 13, 12] }
-const REPORT_TWO_COLUMNS = { x: MARGIN, w: (257 - REPORT.gap) / 2, sizes: [12, 11.5, 11, 10.5, 10] }
+const REPORT_TWO_COLUMNS = { x: MARGIN, w: (257 - REPORT.gap) / 2, sizes: [14, 13, 12, 11.5, 11, 10.5, 10] }
 
-interface ReportColumn {
-  start: number
-  end: number
+// Style de chaque sorte de bloc, d'après la taille du texte courant.
+function blockStyle(kind: BlockKind, size: number) {
+  const half = (v: number) => Math.round(v * 2) / 2
+  switch (kind) {
+    case 'h1':
+      return { size: half(size * 1.3), weight: 400 as const, color: COLORS.taupeDark, lineHeight: REPORT.headingLineHeight, before: 1.1, keep: true }
+    case 'h2':
+      return { size: half(size * 1.15), weight: 400 as const, color: COLORS.text, lineHeight: REPORT.headingLineHeight, before: 0.9, keep: true }
+    case 'h3':
+      return { size, weight: 500 as const, color: COLORS.text, lineHeight: REPORT.headingLineHeight, before: 0.6, keep: true }
+    default:
+      return { size, weight: 300 as const, color: COLORS.text, lineHeight: REPORT.lineHeight, before: 0, keep: false }
+  }
 }
 
-export function reportLayout(body: string): { size: number; columns: 1 | 2; pages: ReportColumn[][] } {
-  const perColumn = (size: number) => Math.floor(REPORT.height / lineHeightMm(size, REPORT.lineHeight))
-  // Lignes d'une colonne, sans ligne vide en tête (un paragraphe qui commence en haut de colonne).
-  const column = (lines: TextLine[]): ReportColumn | null => {
-    const filled = lines.filter((l) => l.end > l.start)
-    return filled.length ? { start: filled[0].start, end: filled[filled.length - 1].end } : null
-  }
-  // Découpe en colonnes de `n` lignes au plus, en sautant les lignes vides au haut de chaque colonne.
-  const split = (lines: TextLine[], n: number): TextLine[][] => {
-    const out: TextLine[][] = []
-    let i = 0
-    while (i < lines.length) {
-      while (i < lines.length && lines[i].end === lines[i].start) i++
-      if (i < lines.length) out.push(lines.slice(i, i + n))
-      i += n
-    }
-    return out
-  }
+// Une ligne affichée du compte-rendu (ou un espace entre paragraphes).
+interface ReportUnit {
+  block: number
+  line: TextLine | null // null : espace laissé par une ligne vide
+  height: number // mm
+  before: number // espace au-dessus (mm), supprimé en haut de colonne
+  keep: boolean // titre : jamais seul en bas de colonne
+}
 
+export interface ReportSegment {
+  block: number
+  start: number // dans le texte du bloc (sans les marques de gras)
+  end: number
+  y: number // mm depuis le haut de la zone de texte
+  lines: number
+}
+
+function reportUnits(blocks: Block[], width: number, size: number): ReportUnit[] {
+  const units: ReportUnit[] = []
+  const indent = listIndent(size)
+  blocks.forEach((b, i) => {
+    const style = blockStyle(b.kind, size)
+    const lh = lineHeightMm(style.size, style.lineHeight)
+    if (b.kind === 'blank') {
+      units.push({ block: i, line: null, height: 0, before: lh * 0.45, keep: false })
+      return
+    }
+    const text = plainText(b.runs)
+    const bold = boldMask(b.runs, style.weight)
+    const lines = wrapLines(text, b.kind === 'li' ? width - indent : width, style.size, bold).filter((l) => l.end > l.start)
+    lines.forEach((line, n) => {
+      units.push({ block: i, line, height: lh, before: n === 0 ? style.before * lh : 0, keep: style.keep && n === lines.length - 1 })
+    })
+  })
+  return units
+}
+
+const listIndent = (size: number) => size * 0.42
+
+// Graisse de chaque lettre d'un bloc : celle du bloc, ou 500 pour le gras.
+function boldMask(runs: InlineRun[], weight: 300 | 400 | 500): (i: number) => 300 | 400 | 500 {
+  const ends: { end: number; bold: boolean }[] = []
+  let at = 0
+  for (const r of runs) ends.push({ end: (at += r.text.length), bold: r.bold })
+  return (i) => (ends.find((e) => i < e.end)?.bold ? 500 : weight)
+}
+
+// Range les lignes en colonnes de `height` mm ; un titre n'est jamais laissé seul en bas d'une colonne.
+function packUnits(units: ReportUnit[], height: number): ReportUnit[][] {
+  const columns: ReportUnit[][] = []
+  let column: ReportUnit[] = []
+  let y = 0
+  for (let i = 0; i < units.length; i++) {
+    const u = units[i]
+    if (!column.length && !u.line) continue // pas d'espace en haut de colonne
+    let need = (column.length ? u.before : 0) + u.height
+    if (u.keep && units[i + 1]?.line) need += units[i + 1].before + units[i + 1].height
+    if (column.length && y + need > height + 0.01) {
+      columns.push(column)
+      column = []
+      y = 0
+      if (!u.line) continue
+    }
+    y += (column.length ? u.before : 0) + u.height
+    column.push(u)
+  }
+  if (column.length) columns.push(column)
+  return columns
+}
+
+// Morceaux de blocs d'une colonne, avec leur hauteur.
+function columnSegments(column: ReportUnit[]): ReportSegment[] {
+  const out: ReportSegment[] = []
+  let y = 0
+  column.forEach((u, n) => {
+    y += n ? u.before : 0
+    if (u.line) {
+      const last = out[out.length - 1]
+      if (last && last.block === u.block && column[n - 1]?.line) {
+        last.end = u.line.end
+        last.lines++
+      } else out.push({ block: u.block, start: u.line.start, end: u.line.end, y, lines: 1 })
+    }
+    y += u.height
+  })
+  return out
+}
+
+export function reportLayout(body: string): { size: number; columns: 1 | 2; pages: ReportSegment[][][]; blocks: Block[] } {
+  const blocks = parseMarkdown(cleanMarkdown(body))
   for (const size of REPORT_ONE_COLUMN.sizes) {
-    const lines = wrapLines(body, REPORT_ONE_COLUMN.w, size)
-    if (lines.length <= perColumn(size)) return { size, columns: 1, pages: [[column(lines)].filter((c) => c !== null)] }
+    const columns = packUnits(reportUnits(blocks, REPORT_ONE_COLUMN.w, size), REPORT.height)
+    if (columns.length <= 1) return { size, columns: 1, pages: [columns.map(columnSegments)], blocks }
   }
   // Deux colonnes : la plus grande taille qui donne le moins de pages.
   const options = REPORT_TWO_COLUMNS.sizes.map((size) => {
-    const lines = wrapLines(body, REPORT_TWO_COLUMNS.w, size)
-    return { size, lines, pages: Math.ceil(split(lines, perColumn(size)).length / 2) }
+    const units = reportUnits(blocks, REPORT_TWO_COLUMNS.w, size)
+    const columns = packUnits(units, REPORT.height)
+    return { size, columns, pages: Math.ceil(columns.length / 2) }
   })
   const fewest = Math.min(...options.map((o) => o.pages))
-  const { size, lines } = options.find((o) => o.pages === fewest)!
-  const n = perColumn(size)
-  const columns = split(lines, n)
-  const pages: ReportColumn[][] = []
-  for (let p = 0; p * 2 < columns.length; p++) {
-    let pair = columns.slice(p * 2, p * 2 + 2)
-    // Dernière page : les deux colonnes à peu près de même hauteur.
-    if (p * 2 + 2 >= columns.length) {
-      const rest = pair.flat()
-      pair = rest.length > 4 ? split(rest, Math.ceil(rest.length / 2)) : [rest]
+  const { size, columns } = options.find((o) => o.pages === fewest)!
+  const pages: ReportUnit[][][] = []
+  for (let p = 0; p * 2 < columns.length; p++) pages.push(columns.slice(p * 2, p * 2 + 2))
+  // Dernière page : deux colonnes à peu près de même hauteur (la plus petite hauteur qui tient en deux).
+  const last = pages[pages.length - 1].flat()
+  for (let h = REPORT.height / 2; h < REPORT.height; h += 2) {
+    const balanced = packUnits(last, h)
+    if (balanced.length <= 2) {
+      pages[pages.length - 1] = balanced
+      break
     }
-    pages.push(pair.map(column).filter((c) => c !== null))
   }
-  return { size, columns: 2, pages }
+  return { size, columns: 2, pages: pages.map((cols) => cols.map(columnSegments)), blocks }
+}
+
+// Morceau [start, end) du texte d'un bloc, avec le gras.
+function sliceRuns(runs: InlineRun[], start: number, end: number, weight: Weight, color: string): Run[] {
+  const out: Run[] = []
+  let at = 0
+  for (const r of runs) {
+    const a = Math.max(start, at)
+    const b = Math.min(end, at + r.text.length)
+    if (b > a) out.push({ text: r.text.slice(a - at, b - at), weight: r.bold ? 500 : weight, color })
+    at += r.text.length
+  }
+  return out
 }
 
 function reportPages(body: string): Page[] {
   if (!body.trim()) return []
-  const { size, columns, pages } = reportLayout(body)
+  const { size, columns, pages, blocks } = reportLayout(body)
+  const source = cleanMarkdown(body)
   const zone = columns === 1 ? REPORT_ONE_COLUMN : REPORT_TWO_COLUMNS
   return pages.map((cols, p) => ({
     key: `report:${p + 1}`,
@@ -290,12 +392,27 @@ function reportPages(body: string): Page[] {
         color: COLORS.taupeDark,
         letterSpacing: 2
       }, p ? {} : { id: 'title' }),
-      ...cols.map((c, i) =>
-        text({ x: zone.x + i * (zone.w + REPORT.gap), y: REPORT.top, w: zone.w, h: REPORT.height }, body.slice(c.start, c.end), {
-          size,
-          weight: 300,
-          lineHeight: REPORT.lineHeight
-        }, { edit: `report:${c.start}:${c.end}` })
+      ...cols.flatMap((segments, i) =>
+        segments.flatMap((seg) => {
+          const block = blocks[seg.block]
+          const style = blockStyle(block.kind, size)
+          const lh = lineHeightMm(style.size, style.lineHeight)
+          const indent = block.kind === 'li' ? listIndent(size) : 0
+          const x = zone.x + i * (zone.w + REPORT.gap)
+          const y = REPORT.top + seg.y
+          // Hauteur un peu plus grande que les lignes : le navigateur et PowerPoint ne coupent jamais plus tôt.
+          const box = { x: x + indent, y, w: zone.w - indent, h: seg.lines * lh + 1 }
+          const textStyle = { size: style.size, weight: style.weight, color: style.color, lineHeight: style.lineHeight }
+          const editable = editableAsPlain(source, block)
+          const out: Element[] = [
+            text(box, sliceRuns(block.runs, seg.start, seg.end, style.weight, style.color), textStyle,
+              editable ? { edit: `report:${block.start + seg.start}:${block.start + seg.end}` } : {})
+          ]
+          if (block.marker && seg.start === 0) {
+            out.unshift(text({ x, y, w: indent, h: lh }, block.marker, { ...textStyle, weight: 300, color: COLORS.taupeDark }))
+          }
+          return out
+        })
       )
     ]
   }))
@@ -718,15 +835,80 @@ function artisansPage(artisans: BookData['artisans']): Page {
   return { key: 'artisans', elements: el }
 }
 
-// Annotation libre posée par Mélanie sur une page (hauteur estimée d'après la longueur du texte).
-function note(n: BookNote): Element {
-  const perLine = Math.max(8, n.w * 0.47)
-  const lines = n.text.split('\n').reduce((sum, l) => sum + Math.max(1, Math.ceil(l.length / perLine)), 0)
-  return text({ x: n.x, y: n.y, w: n.w, h: Math.max(7, lines * 5.4 + 2) }, n.text, { size: 11, weight: 300 }, {
-    edit: `note:${n.id}`,
-    placeholder: 'Votre texte',
-    id: `note:${n.id}`
-  })
+// Couleurs proposées par défaut pour les formes insérées : le foncé de la charte, sans fond.
+export const OBJECT_DEFAULTS = { line: COLORS.text, lineWidth: 1, arrowWidth: 1.5 }
+
+// Annotation ou objet posé par Mélanie sur une page. Un texte prend la hauteur de ses lignes.
+function note(n: BookNote): Element | null {
+  const s = n.style
+  const id = `note:${n.id}`
+  const box = { x: n.x, y: n.y, w: n.w, h: n.h ?? 10 }
+  if (n.kind === 'image') return n.image ? { ...fitted(n.image, box), id } : null
+  if (n.kind === 'rect' || n.kind === 'ellipse') {
+    return {
+      type: n.kind,
+      ...box,
+      id,
+      ...(s.fill ? { fill: s.fill } : {}),
+      line: s.line ?? (s.fill ? undefined : OBJECT_DEFAULTS.line),
+      lineWidth: s.lineWidth ?? OBJECT_DEFAULTS.lineWidth
+    }
+  }
+  if (n.kind === 'line' || n.kind === 'arrow') {
+    return {
+      type: 'line',
+      ...box,
+      id,
+      line: s.line ?? OBJECT_DEFAULTS.line,
+      lineWidth: s.lineWidth ?? OBJECT_DEFAULTS.arrowWidth,
+      arrow: n.kind === 'arrow',
+      ...(s.rotate ? { rotate: s.rotate } : {})
+    }
+  }
+  const size = s.size ?? 11
+  const weight = s.bold ? 500 : 300
+  const lines = wrapLines(n.text || 'Votre texte', n.w, size, weight).length
+  return text({ ...box, h: Math.max(7, lines * lineHeightMm(size, 1.3) + 2) }, n.text, {
+    size,
+    weight,
+    ...(s.color ? { color: s.color } : {}),
+    ...(s.align ? { align: s.align } : {}),
+    ...(s.italic ? { italic: true } : {}),
+    ...(s.underline ? { underline: true } : {})
+  }, { edit: id, placeholder: 'Votre texte', id })
+}
+
+// Mise en forme choisie dans la barre d'outils, appliquée à un élément du book.
+function styled(e: Element, s: ObjectStyle): Element {
+  if (e.type === 'text') {
+    const weight: Weight | undefined = s.bold === true ? 500 : s.bold === false ? 200 : undefined
+    const style: TextStyle = {
+      ...e.style,
+      ...(s.color ? { color: s.color } : {}),
+      ...(weight ? { weight } : {}),
+      ...(s.align ? { align: s.align } : {}),
+      ...(s.italic !== undefined ? { italic: s.italic } : {}),
+      ...(s.underline !== undefined ? { underline: s.underline } : {})
+    }
+    // Ce que Mélanie choisit vaut pour tout le texte, même les morceaux d'une autre couleur ou graisse.
+    const runs = e.runs.map((r) => ({
+      ...r,
+      ...(s.color ? { color: undefined } : {}),
+      ...(weight ? { weight: undefined } : {}),
+      ...(s.italic !== undefined ? { italic: undefined } : {}),
+      ...(s.underline !== undefined ? { underline: undefined } : {})
+    }))
+    return { ...e, style, runs }
+  }
+  if (e.type === 'rect' || e.type === 'ellipse') {
+    return {
+      ...e,
+      ...(s.fill !== undefined ? { fill: s.fill || undefined } : {}),
+      ...(s.line ? { line: s.line } : {}),
+      ...(s.lineWidth ? { lineWidth: s.lineWidth } : {})
+    }
+  }
+  return e
 }
 
 // Applique les ajustements de l'aperçu (position, taille, texte) aux éléments identifiés de la page.
@@ -741,9 +923,10 @@ function applyAdjustments(page: Page, adjustments: Record<string, BookAdjustment
       const a = adjustments[`${page.key}|${e.id}`]
       if (!a) return out
       const box = { x: a.x ?? e.x, y: a.y ?? e.y, w: a.w ?? e.w, h: a.h ?? e.h }
-      const adjusted = [a.x, a.y, a.w, a.h, a.size].some((v) => v !== undefined)
+      const adjusted = [a.x, a.y, a.w, a.h, a.size, a.style].some((v) => v !== undefined)
       if (out.type === 'image') return { ...fitted(out.image, box, e.id), adjusted }
       out = { ...out, ...box, adjusted }
+      if (a.style) out = styled(out, a.style)
       if (out.type === 'text') {
         if (a.size) out = { ...out, style: { ...out.style, size: a.size } }
         if (a.text !== undefined && out.edit?.startsWith('text:')) out = { ...out, runs: [{ ...out.runs[0], text: a.text }] }
@@ -837,7 +1020,7 @@ export function buildBook(d: BookData): Page[] {
   return pages.map((p) => {
     if (!p.hidden) number++
     const plain = p.key === 'cover' || p.key === 'back' || p.key.startsWith('section:') || p.key.startsWith('room:')
-    const notes = d.notes.filter((n) => n.pageKey === p.key).map(note)
+    const notes = d.notes.filter((n) => n.pageKey === p.key).map(note).filter((e) => e !== null)
     const adjusted = applyAdjustments(p, d.adjustments)
     return {
       key: p.key,

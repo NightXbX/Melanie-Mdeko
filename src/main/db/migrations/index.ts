@@ -11,6 +11,8 @@ import m008 from './008_homebyme_mail.sql?raw'
 import m009 from './009_rognage.sql?raw'
 import m010 from './010_devis_pages_retirees.sql?raw'
 import m011 from './011_compte_rendu.sql?raw'
+import m012 from './012_assistant.sql?raw'
+import m013 from './013_objets_apercu.sql?raw'
 
 export const SOURCES: Record<string, string> = {
   '001_schema_initial': m001,
@@ -23,5 +25,7 @@ export const SOURCES: Record<string, string> = {
   '008_homebyme_mail': m008,
   '009_rognage': m009,
   '010_devis_pages_retirees': m010,
-  '011_compte_rendu': m011
+  '011_compte_rendu': m011,
+  '012_assistant': m012,
+  '013_objets_apercu': m013
 }

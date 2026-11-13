@@ -8,6 +8,11 @@ import { mediaUrl } from '../media-urls'
 // Duel de la première semaine : Nano Banana 2 contre GPT Image 2. Modifiable dans les Réglages.
 export const DEFAULT_MODELS = ['google/gemini-3.1-flash-image', 'openai/gpt-image-2']
 export const DEFAULT_CAP_CENTS = 1000 // 10 $ par mois
+// Modèles de l'assistant (OpenRouter) : modifiables dans les Réglages, les identifiants changent souvent.
+export const DEFAULT_CHAT_MODEL = 'openai/gpt-5.4'
+// Vérification des prix : un modèle économique suffit (réglage caché « ai_check_model »).
+export const DEFAULT_CHECK_MODEL = 'openai/gpt-5.4-mini'
+export const DEFAULT_AUDIO_MODEL = 'google/gemini-2.5-flash'
 const DEFAULT_ESTIMATE_CENTS = 10 // coût supposé d'une image tant qu'on n'a rien mesuré
 
 const setting = (db: DatabaseSync, key: string) =>
@@ -24,7 +29,13 @@ export function getAiSettings(db: DatabaseSync): AiSettings {
     // réglage illisible : moteurs par défaut
   }
   const cap = Number(setting(db, 'ai_monthly_cap_cents'))
-  return { models, capCents: Number.isFinite(cap) && cap > 0 ? cap : DEFAULT_CAP_CENTS }
+  return {
+    models,
+    capCents: Number.isFinite(cap) && cap > 0 ? cap : DEFAULT_CAP_CENTS,
+    chatModel: setting(db, 'ai_chat_model') || DEFAULT_CHAT_MODEL,
+    audioModel: setting(db, 'ai_audio_model') || DEFAULT_AUDIO_MODEL,
+    companyMemory: setting(db, 'ai_company_memory') ?? ''
+  }
 }
 
 export function saveAiSettings(db: DatabaseSync, s: Partial<AiSettings>): void {
@@ -33,12 +44,30 @@ export function saveAiSettings(db: DatabaseSync, s: Partial<AiSettings>): void {
     if (models.length) setSetting(db, 'ai_models', JSON.stringify(models))
   }
   if (s.capCents !== undefined && Number.isFinite(s.capCents) && s.capCents > 0) setSetting(db, 'ai_monthly_cap_cents', String(Math.round(s.capCents)))
+  if (s.chatModel !== undefined) setSetting(db, 'ai_chat_model', s.chatModel.trim())
+  if (s.audioModel !== undefined) setSetting(db, 'ai_audio_model', s.audioModel.trim())
+  if (s.companyMemory !== undefined) setSetting(db, 'ai_company_memory', s.companyMemory.trim())
 }
 
 const monthStart = (now: Date) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString()
 
+// Dépense du mois : retouches d'images, discussion, transcriptions et vérifications partagent le même plafond.
 export function monthSpentCents(db: DatabaseSync, now = new Date()): number {
-  return (db.prepare('SELECT coalesce(sum(cost_cents), 0) AS c FROM render_versions WHERE created_at >= ?').get(monthStart(now)) as { c: number }).c
+  const since = monthStart(now)
+  const images = (db.prepare('SELECT coalesce(sum(cost_cents), 0) AS c FROM render_versions WHERE created_at >= ?').get(since) as { c: number }).c
+  const other = (db.prepare('SELECT coalesce(sum(cost_cents), 0) AS c FROM ai_usage WHERE created_at >= ?').get(since) as { c: number }).c
+  return images + other
+}
+
+export function recordUsage(db: DatabaseSync, kind: 'chat' | 'transcription' | 'check' | 'image', model: string, costCents: number): void {
+  if (costCents > 0) db.prepare('INSERT INTO ai_usage (kind, model, cost_cents) VALUES (?, ?, ?)').run(kind, model, costCents)
+}
+
+export function checkCap(db: DatabaseSync, estimateCents = 0): void {
+  const { capCents } = getAiSettings(db)
+  if (monthSpentCents(db) + estimateCents > capCents) {
+    throw new Error(`Le budget de ${(capCents / 100).toLocaleString('fr-FR')} $ de ce mois est atteint. Il peut être relevé dans les Réglages.`)
+  }
 }
 
 // Coût probable d'une image avec ce moteur : moyenne des dernières, sinon une estimation prudente.
@@ -108,3 +137,5 @@ export function renderHistory(db: DatabaseSync, renderId: number): AiVersion[] {
     ...kept.map((v) => ({ id: v.id, imageUrl: mediaUrl(v.rel_path), prompt: v.prompt, createdAt: v.created_at, active: v.id === r.active_version_id }))
   ]
 }
+
+export const checkModel = (db: DatabaseSync) => setting(db, 'ai_check_model') || DEFAULT_CHECK_MODEL

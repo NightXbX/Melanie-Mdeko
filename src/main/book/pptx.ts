@@ -21,7 +21,18 @@ function addElement(pptx: PptxGenJS, slide: PptxGenJS.Slide, e: Element): void {
       slide.addShape(e.type === 'rect' ? pptx.ShapeType.rect : pptx.ShapeType.ellipse, {
         ...position(e),
         fill: e.fill ? { color: hex(e.fill) } : { type: 'none' },
-        line: e.line ? { color: hex(e.line), width: 0.5 } : { type: 'none' }
+        line: e.line ? { color: hex(e.line), width: e.lineWidth ?? 0.7 } : { type: 'none' }
+      })
+      return
+    case 'line':
+      // Trait horizontal au milieu de la boîte ; PowerPoint le tourne autour de son centre, comme le PDF.
+      slide.addShape(pptx.ShapeType.line, {
+        x: inch(e.x),
+        y: inch(e.y + e.h / 2),
+        w: inch(e.w),
+        h: 0,
+        line: { color: hex(e.line), width: e.lineWidth ?? 1.5, ...(e.arrow ? { endArrowType: 'triangle' as const } : {}) },
+        ...(e.rotate ? { rotate: e.rotate } : {})
       })
       return
     case 'text': {
@@ -31,6 +42,8 @@ function addElement(pptx: PptxGenJS, slide: PptxGenJS.Slide, e: Element): void {
         options: {
           color: hex(r.color ?? s.color),
           fontFace: FONT_FACES[r.weight ?? s.weight ?? 200],
+          ...((r.italic ?? s.italic) ? { italic: true } : {}),
+          ...((r.underline ?? s.underline) ? { underline: { style: 'sng' as const } } : {}),
           ...(e.link ? { hyperlink: { url: e.link } } : {})
         }
       }))

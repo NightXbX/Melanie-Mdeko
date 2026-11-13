@@ -6,7 +6,7 @@ import { uploadImage } from '../article-edit'
 import type { DataPaths } from '../paths'
 import instructions from './instructions-v2.txt?raw'
 import { overlay } from './markup'
-import { listImageModels, openRouterProvider, type Fetch } from './openrouter'
+import { listImageModels, openRouterProvider, remainingCredit, type Fetch } from './openrouter'
 import {
   addProposal,
   currentImage,
@@ -27,30 +27,30 @@ const TIMEOUT = 4 * 60 * 1000
 
 const EXTENSIONS: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }
 
-const fetchJson: Fetch = async (url, init) => {
+export const fetchJson: Fetch = async (url, init) => {
   const res = await net.fetch(url, init)
   return { ok: res.ok, status: res.status, json: () => res.json() }
 }
 
-// Implémentation côté processus principal de window.mdeko.ai.
-export function registerAiIpc(db: DatabaseSync, paths: DataPaths): void {
-  let running: AbortController | null = null
-
-  const getKey = (): string | null => {
-    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(KEY_SETTING) as { value: string | null } | undefined
-    if (!row?.value || !safeStorage.isEncryptionAvailable()) return null
-    try {
-      return safeStorage.decryptString(Buffer.from(row.value, 'base64'))
-    } catch {
-      return null
-    }
+// Clé OpenRouter, déchiffrée par le Trousseau (null si absente).
+export function openRouterKey(db: DatabaseSync): string | null {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(KEY_SETTING) as { value: string | null } | undefined
+  if (!row?.value || !safeStorage.isEncryptionAvailable()) return null
+  try {
+    return safeStorage.decryptString(Buffer.from(row.value, 'base64'))
+  } catch {
+    return null
   }
-  const requireKey = () => {
-    const key = getKey()
-    if (!key) throw new Error('Ajoutez d’abord la clé OpenRouter dans les Réglages (⌘,).')
-    return key
-  }
+}
 
+export function requireOpenRouterKey(db: DatabaseSync): string {
+  const key = openRouterKey(db)
+  if (!key) throw new Error('Ajoutez d’abord la clé OpenRouter dans les Réglages (⌘,).')
+  return key
+}
+
+// Images envoyées aux moteurs et images reçues (partagé avec l'assistant).
+export function aiImages(db: DatabaseSync, paths: DataPaths) {
   // Image de la base en JPEG, réduite, prête à être envoyée ; avec les traits de Mélanie par-dessus s'il y en a.
   const dataUrl = (imageId: number, width: number, marks?: Uint8Array): string => {
     const row = db.prepare('SELECT rel_path FROM images WHERE id = ?').get(imageId) as { rel_path: string } | undefined
@@ -66,6 +66,29 @@ export function registerAiIpc(db: DatabaseSync, paths: DataPaths): void {
     }
     return `data:image/jpeg;base64,${img.toJPEG(90).toString('base64')}`
   }
+
+  // Image reçue : enregistrée comme les autres photos (fichier, miniature, une seule copie par contenu).
+  const store = (bytes: Uint8Array, mimeType: string) => {
+    const img = nativeImage.createFromBuffer(Buffer.from(bytes))
+    if (img.isEmpty()) throw new Error('L’image reçue est illisible.')
+    const { width, height } = img.getSize()
+    return uploadImage(db, paths.root, {
+      bytes,
+      ext: EXTENSIONS[mimeType] ?? 'png',
+      width,
+      height,
+      thumbnail: new Uint8Array(img.resize({ width: 360, quality: 'best' }).toJPEG(85))
+    })
+  }
+  return { dataUrl, store }
+}
+
+// Implémentation côté processus principal de window.mdeko.ai.
+export function registerAiIpc(db: DatabaseSync, paths: DataPaths): void {
+  let running: AbortController | null = null
+  const getKey = () => openRouterKey(db)
+  const requireKey = () => requireOpenRouterKey(db)
+  const { dataUrl, store } = aiImages(db, paths)
 
   // Images envoyées et leur description pour le moteur : le rendu (toujours propre), les références (avec leurs
   // traits éventuels), puis une copie du rendu avec les traits de Mélanie.
@@ -85,20 +108,6 @@ export function registerAiIpc(db: DatabaseSync, paths: DataPaths): void {
     return { images, description: lines.join('\n') }
   }
 
-  // Image reçue : enregistrée comme les autres photos (fichier, miniature, une seule copie par contenu).
-  const store = (bytes: Uint8Array, mimeType: string) => {
-    const img = nativeImage.createFromBuffer(Buffer.from(bytes))
-    if (img.isEmpty()) throw new Error('L’image reçue est illisible.')
-    const { width, height } = img.getSize()
-    return uploadImage(db, paths.root, {
-      bytes,
-      ext: EXTENSIONS[mimeType] ?? 'png',
-      width,
-      height,
-      thumbnail: new Uint8Array(img.resize({ width: 360, quality: 'best' }).toJPEG(85))
-    })
-  }
-
   const api: AiApi = {
     status: async () => {
       const settings = getAiSettings(db)
@@ -107,6 +116,7 @@ export function registerAiIpc(db: DatabaseSync, paths: DataPaths): void {
         canStoreKey: safeStorage.isEncryptionAvailable(),
         settings,
         spentCents: monthSpentCents(db),
+        creditCents: getKey() ? await remainingCredit(getKey()!, fetchJson) : null,
         estimateCents: settings.models.reduce((sum, m) => sum + estimateCents(db, m), 0),
         score: duelScore(db)
       }

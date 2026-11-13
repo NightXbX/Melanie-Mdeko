@@ -31,6 +31,16 @@ function Mini({ article, big }: { article: Card; big?: boolean }) {
 
 const zoneOf = (roomId: number | null) => (roomId === null ? 'sans-piece' : String(roomId))
 
+// Affichage compact (une ligne par article) : retenu d'une fois sur l'autre.
+const COMPACT_KEY = 'mdeko.needs.compact'
+const readCompact = () => {
+  try {
+    return localStorage.getItem(COMPACT_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 // Shopping list du projet, rangée par pièce (celles de « Vos envies ») : pour chaque besoin, « Mon choix »
 // et ses autres propositions. Tout se range en faisant glisser : les besoins d'une pièce à l'autre,
 // les propositions entre elles ou sur « Mon choix », et d'un besoin à l'autre (elles restent aussi à leur place).
@@ -38,6 +48,24 @@ export function NeedsSection({ project, reload }: SectionProps) {
   const [picking, setPicking] = useState<Picking | null>(null)
   const [editing, setEditing] = useState<Editing>(null)
   const [importing, setImporting] = useState(false)
+  const [compact, setCompactState] = useState(readCompact)
+  const [opened, setOpened] = useState<Set<number>>(new Set()) // en compact : articles dépliés
+  const [folded, setFolded] = useState<Set<string>>(new Set()) // pièces repliées
+  const setCompact = (on: boolean) => {
+    setCompactState(on)
+    setOpened(new Set())
+    try {
+      localStorage.setItem(COMPACT_KEY, on ? '1' : '0')
+    } catch {
+      // réglage d'affichage seulement
+    }
+  }
+  const toggle = <T,>(set: Set<T>, value: T) => {
+    const next = new Set(set)
+    if (next.has(value)) next.delete(value)
+    else next.add(value)
+    return next
+  }
 
   const run = async (action: Promise<unknown>) => {
     await action
@@ -116,6 +144,14 @@ export function NeedsSection({ project, reload }: SectionProps) {
       </SectionHeader>
 
       <div className="need-options">
+        <div className="need-density" role="group" aria-label="Affichage">
+          <button type="button" className={`button${compact ? '' : ' is-active'}`} onClick={() => setCompact(false)}>
+            Détaillé
+          </button>
+          <button type="button" className={`button${compact ? ' is-active' : ''}`} onClick={() => setCompact(true)}>
+            Compact
+          </button>
+        </div>
         <label className="filter-check">
           <input
             type="checkbox"
@@ -144,29 +180,52 @@ export function NeedsSection({ project, reload }: SectionProps) {
       )}
 
       {groups.map(({ room, needs: list }) => {
-        const cards = list.map((need) => (
-          <NeedCard
-            key={need.id}
-            projectId={project.id}
-            need={need}
-            rooms={rooms}
-            drag={needs.item(need.id, zoneOf(need.roomId))}
-            run={run}
-            onPick={setPicking}
-            onEdit={(articleId) => setEditing({ articleId })}
-          />
-        ))
+        const zoneName = zoneOf(room?.id ?? null)
+        const isFolded = folded.has(zoneName)
+        const cards = isFolded
+          ? []
+          : list.map((need) =>
+              compact && !opened.has(need.id) ? (
+                <NeedRow
+                  key={need.id}
+                  need={need}
+                  rooms={rooms}
+                  drag={needs.item(need.id, zoneOf(need.roomId))}
+                  run={run}
+                  onOpen={() => setOpened(toggle(opened, need.id))}
+                />
+              ) : (
+                <NeedCard
+                  key={need.id}
+                  projectId={project.id}
+                  need={need}
+                  rooms={rooms}
+                  drag={needs.item(need.id, zoneOf(need.roomId))}
+                  run={run}
+                  onPick={setPicking}
+                  onEdit={(articleId) => setEditing({ articleId })}
+                  onCollapse={compact ? () => setOpened(toggle(opened, need.id)) : undefined}
+                />
+              )
+            )
         return rooms.length ? (
-          <div key={room?.id ?? 'sans-piece'} className="need-room" {...needs.zone(zoneOf(room?.id ?? null))}>
+          <div key={room?.id ?? 'sans-piece'} className={`need-room${compact ? ' is-compact' : ''}`} {...needs.zone(zoneName)}>
             <div className="need-room-head">
-              <h3>{room?.name ?? 'Sans pièce'}</h3>
+              <button type="button" className="need-room-fold" onClick={() => setFolded(toggle(folded, zoneName))} title={isFolded ? 'Déplier' : 'Replier'}>
+                <span className={`need-room-chevron${isFolded ? '' : ' is-open'}`}>
+                  <Icon name="chevronRight" size={12} />
+                </span>
+                <h3>{room?.name ?? 'Sans pièce'}</h3>
+                <span className="filter-count">{list.length}</span>
+              </button>
               {addButtons(room?.id ?? null, `Ajouter un article${room ? ` dans « ${room.name} »` : ''}`)}
             </div>
             {list.length === 0 && <p className="section-note">Aucun article pour l’instant : faites-en glisser un ici.</p>}
+            {isFolded && list.length > 0 && <p className="section-note">Pièce repliée : vous pouvez y lâcher un article.</p>}
             {cards}
           </div>
         ) : (
-          <div key="tous" className="need-room" {...needs.zone('sans-piece')}>
+          <div key="tous" className={`need-room${compact ? ' is-compact' : ''}`} {...needs.zone('sans-piece')}>
             {cards}
           </div>
         )
@@ -211,9 +270,55 @@ interface NeedCardProps {
   run(action: Promise<unknown>): Promise<void>
   onPick(p: Picking): void
   onEdit(articleId: number): void
+  onCollapse?(): void // affichage compact : revenir à une ligne
 }
 
-function NeedCard({ projectId, need, rooms, drag, run, onPick, onEdit }: NeedCardProps) {
+// Affichage compact : une ligne par article, pour en voir beaucoup et les déplacer facilement.
+function NeedRow({
+  need,
+  rooms,
+  drag,
+  run,
+  onOpen
+}: Pick<NeedCardProps, 'need' | 'rooms' | 'drag' | 'run'> & { onOpen(): void }) {
+  const choice = need.choice
+  return (
+    <div className="need-row" {...drag} onDoubleClick={onOpen}>
+      <span className="grip" title="Faire glisser pour déplacer">
+        <Icon name="grip" size={14} />
+      </span>
+      <div className="need-row-photo">{choice?.thumbnailUrl ? <img src={choice.thumbnailUrl} alt="" draggable={false} /> : <Icon name="photo" size={16} />}</div>
+      <span className="need-row-title">{need.label ?? need.category ?? 'Article'}</span>
+      <span className="need-row-choice">
+        {choice ? choice.name : 'Pas encore choisi'}
+        {choice?.supplier && <small> · {choice.supplier}</small>}
+      </span>
+      {need.quantity > 1 && <span className="need-row-qty">× {need.quantity}</span>}
+      <span className="need-row-price">{choice ? formatPrice(choice.price) : ''}</span>
+      <span className="need-row-alts">{need.alternatives.length ? `+ ${need.alternatives.length}` : ''}</span>
+      {rooms.length > 0 && (
+        <select
+          className="need-room-select"
+          aria-label="Pièce"
+          value={need.roomId ?? ''}
+          onChange={(e) => void run(window.mdeko.projects.setNeedRoom(need.id, e.target.value ? Number(e.target.value) : null))}
+        >
+          <option value="">Sans pièce</option>
+          {rooms.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+      )}
+      <button type="button" className="button button-plain" onClick={onOpen}>
+        Détails
+      </button>
+    </div>
+  )
+}
+
+function NeedCard({ projectId, need, rooms, drag, run, onPick, onEdit, onCollapse }: NeedCardProps) {
   const { notify } = useApp()
   const altZone = `alts:${need.id}`
   const choiceZone = `choice:${need.id}`
@@ -271,6 +376,11 @@ function NeedCard({ projectId, need, rooms, drag, run, onPick, onEdit }: NeedCar
           <button type="button" className="button button-plain" onClick={() => onPick({ mode: 'choice', need })}>
             Remplacer
           </button>
+          {onCollapse && (
+            <button type="button" className="button button-plain" onClick={onCollapse}>
+              Réduire
+            </button>
+          )}
           <button type="button" className="button button-plain button-danger" onClick={() => void run(window.mdeko.projects.removeNeed(need.id))}>
             Retirer
           </button>
