@@ -203,6 +203,15 @@ describe('rendus 3D', () => {
 })
 
 describe('modifications dans l’aperçu', () => {
+  it('modifie un morceau du compte-rendu sans toucher au reste', () => {
+    const id = createProject(db, 'Mme', 'Durand')
+    updateProject(db, id, { report: 'Salon : canapé validé.\r\n\r\nChambre : papier peint à revoir.' })
+    expect(getProject(db, id)!.report).toBe('Salon : canapé validé.\n\nChambre : papier peint à revoir.')
+    // Seconde colonne du book : « Chambre… » (caractères 24 à 56).
+    editBookText(db, id, 'report:24:56', 'Chambre : papier peint choisi.')
+    expect(getProject(db, id)!.report).toBe('Salon : canapé validé.\n\nChambre : papier peint choisi.')
+  })
+
   it('met à jour textes, légendes, titres de besoin et annotations', () => {
     const id = createProject(db, 'Mme', 'Durand')
     db.exec("INSERT INTO images (id, rel_path) VALUES (1, 'a.jpg')")

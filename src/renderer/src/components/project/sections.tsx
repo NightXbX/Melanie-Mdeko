@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { DEFAULT_PAINT_BRAND, DOCUMENT_NAMES, type Artisan, type DocumentKind, type Paint } from '@shared/projects'
 import { useApp } from '../../app-context'
 import { useAutosave } from '../../lib/autosave'
@@ -175,6 +175,39 @@ export function WishesSection({ project, settings, reload }: SectionProps) {
           Revenir au texte modèle
         </button>
       )}
+    </div>
+  )
+}
+
+// --- Compte-rendu --------------------------------------------------------------------------------
+
+export function ReportSection({ project, reload }: SectionProps) {
+  const [text, setText] = useState(project.report)
+  const editing = useRef(false)
+  useAutosave(text, (t) => void window.mdeko.projects.update(project.id, { report: t }).then(reload))
+  // Texte retouché dans l'aperçu : on le reprend, sauf pendant la saisie ici.
+  useEffect(() => {
+    if (!editing.current) setText(project.report)
+  }, [project.report])
+
+  return (
+    <div className="section">
+      <SectionHeader title="Compte-rendu" />
+      <label className="field">
+        <span>Compte-rendu de réunion</span>
+        <textarea
+          rows={18}
+          value={text}
+          placeholder="Ce qui a été dit et décidé avec le client…"
+          onFocus={() => (editing.current = true)}
+          onBlur={() => (editing.current = false)}
+          onChange={(e) => setText(e.target.value)}
+        />
+      </label>
+      <p className="section-note">
+        Il prend place dans le design book juste après « Vos envies ». La mise en page s’adapte à la longueur du texte ;
+        laissé vide, il n’y a pas de page.
+      </p>
     </div>
   )
 }

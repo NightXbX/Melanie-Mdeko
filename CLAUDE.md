@@ -68,6 +68,7 @@ Mac cible : **Mac fixe M1, 16 Go, macOS Tahoe 26.x** (26.2.2 déclaré ; un expo
 - Réglages (⌘, ou bouton en bas de la barre latérale) : coordonnées, QR code d'avis, textes modèles (`{pieces}` = pièces du projet).
 - **Quantités** (`needs.quantity`) : « 2 × 219 € » sous « Mon choix », colonne « Qté » et total multiplié dans le récapitulatif.
 - **Options du book par projet** (étape Shopping list) : afficher les prix (`projects.show_prices`) ; réunir par 4 sur une page « Mes choix » les choix d'une pièce sans autre proposition (`projects.group_single_choices`).
+- **Compte-rendu de réunion** (`projects.report_text`, migration 011, étape « Compte-rendu » du projet) : pages juste après « Vos envies », avant les plans (vide = pas de page). `reportLayout` (`layout.ts`) choisit une colonne en grand (15 à 12 pt), sinon deux colonnes (12 à 10 pt), puis la plus grande taille qui donne le moins de pages (environ 500 mots par page à 10 pt). Mesure sans navigateur (`measure.ts`, largeurs de Poppins Light dans `poppins-widths.ts`, produit par `tools/largeurs-poppins.mjs`). Chaque colonne se modifie dans l'aperçu (`report:<début>:<fin>`). Section `unkeyed` : n'en décale pas les clés `section:N`.
 - **Planche tendance** (`project_trend_images`) : photos glissées ou prises dans les inspirations ; pages en mosaïque (6 par page) juste après le sommaire, absentes sans photo.
 - Nuancier : sous chaque teinte, la marque (où la trouver) et la référence, plus de code couleur.
 - Écran **Artisans** (barre latérale) : le carnet commun à tous les projets.

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Element, Page } from '@shared/book'
 import { bookHtml, exported } from './html'
-import { buildBook, exportedPages, type BookArticle, type BookData } from './layout'
+import { buildBook, exportedPages, reportLayout, type BookArticle, type BookData } from './layout'
 
 const img = { url: 'mdeko://media/x.jpg', path: '/x.jpg', width: 1600, height: 900 }
 let nextId = 1
@@ -30,6 +30,7 @@ const data = (over: Partial<BookData> = {}): BookData => ({
   reviewQr: null,
   intro: 'Avant-propos',
   wishes: 'Vos envies',
+  report: '',
   closing: 'À vous',
   renders: [
     { id: 1, image: img, inset: null, section: 'plans', caption: null },
@@ -52,6 +53,7 @@ const data = (over: Partial<BookData> = {}): BookData => ({
 
 type TextElement = Extract<Element, { type: 'text' }>
 const textsOf = (p: Page) => p.elements.filter((e): e is TextElement => e.type === 'text').map((e) => e.runs.map((r) => r.text).join(''))
+const NL = String.fromCharCode(10)
 const byKey = (pages: Page[], key: string) => pages.find((p) => p.key === key)!
 
 describe('design book', () => {
@@ -307,5 +309,39 @@ describe('design book', () => {
     expect(html.match(/<section class="page">/g)).toHaveLength(16)
     expect(html).toContain('@font-face{font-family:Poppins;font-weight:200')
     expect(html).toContain('href="https://exemple.fr/Fauteuil"')
+  })
+
+  it('place le compte-rendu après « Vos envies », sans multiplier les pages', () => {
+    const short = buildBook(data({ report: 'Points abordés :' + NL + '- peinture du salon' + NL + '- devis du menuisier' }))
+    expect(short.map((p) => p.key).slice(2, 6)).toEqual(['intro', 'wishes', 'report:1', 'section:3'])
+    expect(textsOf(short[1])).toContain('Compte-rendu')
+    // Les intercalaires gardent leur clé, mais leur numéro suit le sommaire.
+    expect(textsOf(short[5])[0]).toBe('—  04  —')
+
+    const paragraph = 'Nous avons fait le tour des pièces et validé les grandes orientations du projet avec le client. '
+    const sizeOf = (n: number) => reportLayout(Array.from({ length: n }, () => paragraph.repeat(3)).join(NL + NL))
+    // Peu de texte : une colonne en grand. Plus : la taille baisse, puis deux colonnes, toujours sur une page.
+    expect(sizeOf(1)).toMatchObject({ columns: 1, size: 15 })
+    expect(sizeOf(6).pages).toHaveLength(1)
+    expect(sizeOf(8)).toMatchObject({ columns: 2 })
+    expect(sizeOf(10).pages).toHaveLength(1)
+    // Un peu plus long : deux pages, en reprenant une taille confortable.
+    expect(sizeOf(12)).toMatchObject({ columns: 2, size: 12 })
+    expect(sizeOf(12).pages).toHaveLength(2)
+    // Très long (environ 3 000 mots, 500 par page) : quelques pages seulement.
+    expect(sizeOf(60).pages.length).toBeLessThanOrEqual(6)
+  })
+
+  it('découpe le compte-rendu en colonnes qui reprennent tout le texte, dans l’ordre', () => {
+    const body = Array.from({ length: 40 }, (_, i) => `Point ${i + 1} : décision prise sur le mobilier et les finitions de la pièce.`).join(NL)
+    const { pages } = reportLayout(body)
+    const parts = pages.flat()
+    // Rien n'est perdu : entre deux colonnes, seulement des espaces ou des retours à la ligne.
+    expect(parts[0].start).toBe(0)
+    expect(parts.at(-1)!.end).toBe(body.length)
+    parts.slice(1).forEach((c, i) => expect(body.slice(parts[i].end, c.start).trim()).toBe(''))
+    const book = buildBook(data({ report: body }))
+    const edits = book.filter((p) => p.key.startsWith('report:')).flatMap((p) => p.elements.filter((e) => e.type === 'text' && e.edit?.startsWith('report:')))
+    expect(edits).toHaveLength(parts.length)
   })
 })

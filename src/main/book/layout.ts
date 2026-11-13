@@ -1,6 +1,7 @@
 import { textKey, type BookAdjustment, type Box, type Element, type ImageRef, type Page, type Run, type TextStyle } from '@shared/book'
 import type { DocumentKind } from '@shared/projects'
 import { BOTTOM, COLORS, MARGIN, PAGE, RENDER, TEXT_BLOCK, WATERMARK } from './charte'
+import { lineHeightMm, wrapLines, type TextLine } from './measure'
 
 export type { Element, ImageRef, Page }
 
@@ -49,6 +50,7 @@ export interface BookData {
   reviewQr: ImageRef | null
   intro: string
   wishes: string
+  report: string // compte-rendu de réunion (vide : pas de page)
   closing: string
   renders: { id: number; image: ImageRef; inset: ImageRef | null; section: 'plans' | 'changes'; caption: string | null }[]
   // Rangés par pièce (articles sans pièce en tête), dans l'ordre des pièces du projet.
@@ -215,6 +217,88 @@ function textPage(key: string, body: string, edit: string, signature: string | n
   const elements = [text({ x, y, w: width, h: height }, body, { size, lineHeight, align: 'justify' }, { edit, id: 'body' })]
   if (signature) elements.push(text({ x, y: y + height + 2, w: width, h: 10 }, signature, { size, align: 'right' }, { id: 'signature' }))
   return { key, elements }
+}
+
+// Compte-rendu de réunion : le texte doit tenir proprement quelle que soit sa longueur, sans multiplier les
+// pages. On essaie d'abord une colonne en grand, puis on réduit la taille, puis deux colonnes ; au-delà d'une
+// page, deux colonnes à la plus grande taille qui donne le moins de pages possible. Chaque colonne reste
+// modifiable dans l'aperçu (« report:<début>:<fin> » : sa place dans le texte complet).
+const REPORT = { top: 28, height: 160, lineHeight: 1.5, gap: 14 }
+const REPORT_ONE_COLUMN = { x: 40, w: 217, sizes: [15, 14, 13, 12] }
+const REPORT_TWO_COLUMNS = { x: MARGIN, w: (257 - REPORT.gap) / 2, sizes: [12, 11.5, 11, 10.5, 10] }
+
+interface ReportColumn {
+  start: number
+  end: number
+}
+
+export function reportLayout(body: string): { size: number; columns: 1 | 2; pages: ReportColumn[][] } {
+  const perColumn = (size: number) => Math.floor(REPORT.height / lineHeightMm(size, REPORT.lineHeight))
+  // Lignes d'une colonne, sans ligne vide en tête (un paragraphe qui commence en haut de colonne).
+  const column = (lines: TextLine[]): ReportColumn | null => {
+    const filled = lines.filter((l) => l.end > l.start)
+    return filled.length ? { start: filled[0].start, end: filled[filled.length - 1].end } : null
+  }
+  // Découpe en colonnes de `n` lignes au plus, en sautant les lignes vides au haut de chaque colonne.
+  const split = (lines: TextLine[], n: number): TextLine[][] => {
+    const out: TextLine[][] = []
+    let i = 0
+    while (i < lines.length) {
+      while (i < lines.length && lines[i].end === lines[i].start) i++
+      if (i < lines.length) out.push(lines.slice(i, i + n))
+      i += n
+    }
+    return out
+  }
+
+  for (const size of REPORT_ONE_COLUMN.sizes) {
+    const lines = wrapLines(body, REPORT_ONE_COLUMN.w, size)
+    if (lines.length <= perColumn(size)) return { size, columns: 1, pages: [[column(lines)].filter((c) => c !== null)] }
+  }
+  // Deux colonnes : la plus grande taille qui donne le moins de pages.
+  const options = REPORT_TWO_COLUMNS.sizes.map((size) => {
+    const lines = wrapLines(body, REPORT_TWO_COLUMNS.w, size)
+    return { size, lines, pages: Math.ceil(split(lines, perColumn(size)).length / 2) }
+  })
+  const fewest = Math.min(...options.map((o) => o.pages))
+  const { size, lines } = options.find((o) => o.pages === fewest)!
+  const n = perColumn(size)
+  const columns = split(lines, n)
+  const pages: ReportColumn[][] = []
+  for (let p = 0; p * 2 < columns.length; p++) {
+    let pair = columns.slice(p * 2, p * 2 + 2)
+    // Dernière page : les deux colonnes à peu près de même hauteur.
+    if (p * 2 + 2 >= columns.length) {
+      const rest = pair.flat()
+      pair = rest.length > 4 ? split(rest, Math.ceil(rest.length / 2)) : [rest]
+    }
+    pages.push(pair.map(column).filter((c) => c !== null))
+  }
+  return { size, columns: 2, pages }
+}
+
+function reportPages(body: string): Page[] {
+  if (!body.trim()) return []
+  const { size, columns, pages } = reportLayout(body)
+  const zone = columns === 1 ? REPORT_ONE_COLUMN : REPORT_TWO_COLUMNS
+  return pages.map((cols, p) => ({
+    key: `report:${p + 1}`,
+    elements: [
+      text({ x: MARGIN, y: 12, w: 230, h: 7 }, p ? 'COMPTE-RENDU DE RÉUNION  ·  SUITE' : 'COMPTE-RENDU DE RÉUNION', {
+        size: 11,
+        weight: 400,
+        color: COLORS.taupeDark,
+        letterSpacing: 2
+      }, p ? {} : { id: 'title' }),
+      ...cols.map((c, i) =>
+        text({ x: zone.x + i * (zone.w + REPORT.gap), y: REPORT.top, w: zone.w, h: REPORT.height }, body.slice(c.start, c.end), {
+          size,
+          weight: 300,
+          lineHeight: REPORT.lineHeight
+        }, { edit: `report:${c.start}:${c.end}` })
+      )
+    ]
+  }))
 }
 
 function renderPage(r: BookData['renders'][number], adjust: Adjust): Page {
@@ -675,6 +759,9 @@ interface Section {
   title: string
   pages: Page[]
   divider: boolean
+  // Section ajoutée après coup (compte-rendu) : ne décale pas les clés des intercalaires suivants, auxquelles
+  // sont rattachés pages retirées, annotations et ajustements.
+  unkeyed?: boolean
 }
 
 export function buildBook(d: BookData): Page[] {
@@ -684,7 +771,8 @@ export function buildBook(d: BookData): Page[] {
   const sections: Section[] = [
     ...(d.trend.length ? [{ title: 'Planche tendance', pages: trendPages(d.trend), divider: false }] : []),
     { title: 'Avant-propos', pages: [textPage('intro', d.intro, 'intro', d.designerName)], divider: false },
-    { title: 'Vos envies', pages: [textPage('wishes', d.wishes, 'wishes', null)], divider: false }
+    { title: 'Vos envies', pages: [textPage('wishes', d.wishes, 'wishes', null)], divider: false },
+    ...(d.report.trim() ? [{ title: 'Compte-rendu', pages: reportPages(d.report), divider: false, unkeyed: true }] : [])
   ]
   const renderPages = (list: typeof plans) => list.map((r) => renderPage(r, adjust(`render:${r.id}`)))
   if (plans.length) sections.push({ title: 'Plans d’aménagement intérieur', pages: renderPages(plans), divider: true })
@@ -713,10 +801,11 @@ export function buildBook(d: BookData): Page[] {
   // Intercalaires numérotés comme le sommaire. Leur clé suit l'ordre de toutes les sections (elle ne change
   // pas quand une autre est retirée), leur numéro celui des sections montrées.
   let shownSections = 0
-  sections.forEach((s, i) => {
+  const keyed = sections.filter((s) => !s.unkeyed)
+  sections.forEach((s) => {
     if (!s.pages.some(shown)) return
     shownSections++
-    if (s.divider) s.pages.unshift(dividerPage(s.title, two(shownSections), `section:${i + 1}`))
+    if (s.divider) s.pages.unshift(dividerPage(s.title, two(shownSections), `section:${keyed.indexOf(s) + 1}`))
   })
 
   // Numérotation des pages montrées : couverture = 1, puis le sommaire s'il est gardé.

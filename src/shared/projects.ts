@@ -97,6 +97,7 @@ export interface Project {
   bookDate: string | null
   rooms: Room[]
   texts: ProjectTexts
+  report: string // compte-rendu de réunion (vide : pas de page dans le book)
   renders: ProjectRender[]
   needs: ProjectNeed[]
   paintIds: number[]
@@ -111,7 +112,7 @@ export interface Project {
 }
 
 export type ProjectPatch = Partial<
-  Pick<Project, 'clientTitle' | 'clientName' | 'address' | 'phone' | 'email' | 'bookDate' | 'showPrices' | 'groupSingleChoices' | 'kind' | 'coverAddress'> & { texts: ProjectTexts }
+  Pick<Project, 'clientTitle' | 'clientName' | 'address' | 'phone' | 'email' | 'bookDate' | 'showPrices' | 'groupSingleChoices' | 'kind' | 'coverAddress' | 'report'> & { texts: ProjectTexts }
 >
 
 // Réglages de Mélanie : coordonnées et textes modèles (dans ses données, jamais dans le code).

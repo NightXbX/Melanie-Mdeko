@@ -9,9 +9,9 @@ import { RendersSection } from './RendersSection'
 import { SendSection } from './SendSection'
 import { Slideshow } from './Slideshow'
 import { TrendSection } from './TrendSection'
-import { ArtisansSection, ClientSection, PaintsSection, TextsSection, WishesSection } from './sections'
+import { ArtisansSection, ClientSection, PaintsSection, ReportSection, TextsSection, WishesSection } from './sections'
 
-type Step = 'client' | 'trend' | 'wishes' | 'renders' | 'needs' | 'paints' | 'artisans' | 'texts' | 'send'
+type Step = 'client' | 'trend' | 'wishes' | 'report' | 'renders' | 'needs' | 'paints' | 'artisans' | 'texts' | 'send'
 
 export interface SectionProps {
   project: Project
@@ -75,6 +75,7 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
     { id: 'client', label: 'Client' },
     { id: 'trend', label: 'Planche tendance', count: project.trendImages.length },
     { id: 'wishes', label: 'Vos envies' },
+    { id: 'report', label: 'Compte-rendu' },
     { id: 'renders', label: 'Plans 3D', count: project.renders.length },
     { id: 'needs', label: 'Shopping list', count: project.needs.length },
     { id: 'paints', label: 'Teintes et couleurs', count: project.paintIds.length },
@@ -148,6 +149,7 @@ export function ProjectEditor({ projectId, onClose }: { projectId: number; onClo
           {step === 'client' && <ClientSection {...props} onDeleted={onClose} />}
           {step === 'trend' && <TrendSection {...props} />}
           {step === 'wishes' && <WishesSection {...props} />}
+          {step === 'report' && <ReportSection {...props} />}
           {step === 'renders' && <RendersSection {...props} />}
           {step === 'needs' && <NeedsSection {...props} />}
           {step === 'paints' && <PaintsSection {...props} />}

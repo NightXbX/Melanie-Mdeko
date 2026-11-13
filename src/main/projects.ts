@@ -77,6 +77,7 @@ export function updateProject(db: DatabaseSync, id: number, patch: ProjectPatch)
     columns.push(['kind', patch.kind])
     for (const key of QUOTE_HIDDEN_PAGES) setPageHidden(db, id, key, patch.kind === 'quote')
   }
+  if (patch.report !== undefined) columns.push(['report_text', patch.report.replace(/\r\n?/g, '\n') || null])
   if (patch.texts) {
     columns.push(['intro_text', patch.texts.intro], ['wishes_text', patch.texts.wishes], ['closing_text', patch.texts.closing])
   }
@@ -114,6 +115,7 @@ export function getProject(db: DatabaseSync, id: number): Project | null {
       wishes: p.wishes_text as string | null,
       closing: p.closing_text as string | null
     },
+    report: (p.report_text as string | null) ?? '',
     renders: getRenders(db, id),
     needs: getNeeds(db, id),
     paintIds: ids('SELECT paint_id AS id FROM project_paints WHERE project_id = ? ORDER BY sort'),
@@ -609,6 +611,13 @@ export function editBookText(db: DatabaseSync, projectId: number, key: string, v
   if (kind === 'intro' || kind === 'wishes' || kind === 'closing') {
     const project = getProject(db, projectId)
     if (project) updateProject(db, projectId, { texts: { ...project.texts, [kind]: text } })
+  } else if (kind === 'report') {
+    // Morceau du compte-rendu (une colonne d'une page) : « report:<début>:<fin> » dans le texte complet.
+    const [start, end] = rest.split(':').map(Number)
+    const project = getProject(db, projectId)
+    if (project && end <= project.report.length) {
+      updateProject(db, projectId, { report: project.report.slice(0, start) + text + project.report.slice(end) })
+    }
   } else if (kind === 'caption') {
     db.prepare('UPDATE renders SET caption = ? WHERE id = ? AND project_id = ?').run(text.trim() || null, id, projectId)
   } else if (kind === 'needLabel') {

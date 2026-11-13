@@ -85,6 +85,7 @@ export function bookData(db: DatabaseSync, dataRoot: string, projectId: number):
     reviewQr: qrId ? imageRef(db, dataRoot, 'id', Number(qrId)) : null,
     intro: project.texts.intro ?? settings.introText,
     wishes: wishesText(project, settings),
+    report: project.report,
     closing: project.texts.closing ?? settings.closingText,
     renders: project.renders.map((r) => {
       const inset = db.prepare('SELECT inset_image_id FROM renders WHERE id = ?').get(r.id) as { inset_image_id: number | null }

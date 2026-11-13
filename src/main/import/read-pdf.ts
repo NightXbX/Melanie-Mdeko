@@ -38,6 +38,7 @@ export type ImportEvent =
   | { kind: 'rows'; rows: RowDraft[] }
   | { kind: 'render'; image: EncodedImage; inset: EncodedImage | null; section: 'plans' | 'changes'; caption?: string }
   | { kind: 'wishes'; text: string }
+  | { kind: 'report'; text: string } // compte-rendu de réunion (books exportés par Mdeko)
   // Books exportés par Mdeko : besoins déjà formés, planche tendance, textes du projet.
   | { kind: 'need'; room: string | null; label: string; quantity: number; choice: RowDraft; alternatives: RowDraft[] }
   | { kind: 'trend'; image: EncodedImage }

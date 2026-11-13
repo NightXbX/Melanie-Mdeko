@@ -269,6 +269,9 @@ export class BookImporter {
         }
         return
       }
+      case 'report':
+        if (this.projectId !== null && e.text) this.db.prepare('UPDATE projects SET report_text = ? WHERE id = ?').run(e.text, this.projectId)
+        return
       case 'wishes': {
         if (this.projectId === null || !e.text) return
         this.db.prepare('UPDATE projects SET wishes_text = ? WHERE id = ?').run(e.text, this.projectId)

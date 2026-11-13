@@ -168,6 +168,7 @@ export async function* readMdekoBook(mupdf: MupdfModule, doc: Mupdf.Document): A
     sections.length ? (sections.find((s) => pageNumber >= s.from && pageNumber <= s.to)?.key ?? '') : guessSection(p())
 
   let need: Need | null = null
+  let report = ''
   const flush = function* (): Generator<ImportEvent> {
     if (need) yield { kind: 'need', ...need }
     need = null
@@ -188,6 +189,12 @@ export async function* readMdekoBook(mupdf: MupdfModule, doc: Mupdf.Document): A
       // La signature, à droite sous le texte, n'en fait pas partie.
       const body = paragraphs({ ...p.raw, lines: p.raw.lines.filter((l) => l.x0 * MM < 200 || l.text.trim().split(' ').length > 3) })
       yield { kind: 'texts', ...(section === 'avantpropos' ? { intro: body } : { closing: body }) }
+    } else if (section === 'compterendu') {
+      // Une ou deux colonnes par page ; un paragraphe coupé entre deux colonnes est recollé.
+      for (const column of readReportColumns(p)) {
+        if (!column) continue
+        report = !report ? column : /[.!?:;]$/.test(report) ? `${report}\n\n${column}` : `${report} ${column}`
+      }
     } else if (section === 'vosenvies') {
       yield { kind: 'wishes', text: paragraphs(p.raw) }
     } else if (section === 'planchetendance') {
@@ -272,6 +279,29 @@ export async function* readMdekoBook(mupdf: MupdfModule, doc: Mupdf.Document): A
     }
   }
   yield* flush()
+  if (report) yield { kind: 'report', text: report }
+}
+
+// Compte-rendu : texte sous le titre, en une colonne (à partir de x = 40 mm) ou deux (la seconde vers 155 mm).
+// Un écart nettement plus grand sépare deux paragraphes ; une ligne qui commence par un tiret ou une puce
+// est un nouvel élément de liste.
+function readReportColumns(p: MdekoPage): string[] {
+  const body = p.lines.filter((l) => l.y0 > 22).sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0)
+  const read = (lines: Line[]) => {
+    if (!lines.length) return ''
+    const gaps = lines.slice(1).map((l, i) => l.y0 - lines[i].y0).sort((a, b) => a - b)
+    const usual = gaps[Math.floor(gaps.length / 4)] ?? 0
+    return lines
+      .map((l, i) => {
+        const t = l.text.trim()
+        if (!i) return t
+        if (l.y0 - lines[i - 1].y0 > usual * 1.5) return `\n\n${t}`
+        return /^[-–•·*]|^\d+[.)]\s/.test(t) ? `\n${t}` : ` ${t}`
+      })
+      .join('')
+      .trim()
+  }
+  return [read(body.filter((l) => l.x0 < 150)), read(body.filter((l) => l.x0 >= 150))]
 }
 
 // Section d'une page sans sommaire, d'après ce qu'elle montre. Les pages de texte (avant-propos, envies…) ne se
@@ -282,6 +312,7 @@ function guessSection(p: MdekoPage): string {
   if (top.includes('planchetendance')) return 'planchetendance'
   if (top.includes('nuancier')) return 'teintesetcouleurs'
   if (top.includes('artisans')) return 'artisans'
+  if (top.some((k) => k.startsWith('compterendu'))) return 'compterendu'
   if (keys.includes('monchoix') || top.includes('meschoix') || top.includes('recapitulatifdemeschoix') || top.some((k) => k.includes('autrespropositions'))) {
     return 'shoppinglist'
   }
