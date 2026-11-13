@@ -13,6 +13,7 @@ import m010 from './010_devis_pages_retirees.sql?raw'
 import m011 from './011_compte_rendu.sql?raw'
 import m012 from './012_assistant.sql?raw'
 import m013 from './013_objets_apercu.sql?raw'
+import m014 from './014_verifie_a_la_main.sql?raw'
 
 export const SOURCES: Record<string, string> = {
   '001_schema_initial': m001,
@@ -27,5 +28,6 @@ export const SOURCES: Record<string, string> = {
   '010_devis_pages_retirees': m010,
   '011_compte_rendu': m011,
   '012_assistant': m012,
-  '013_objets_apercu': m013
+  '013_objets_apercu': m013,
+  '014_verifie_a_la_main': m014
 }

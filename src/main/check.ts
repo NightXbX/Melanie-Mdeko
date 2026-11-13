@@ -30,8 +30,18 @@ export function checkDatabase(db: DatabaseSync, paths: DataPaths, now = new Date
   }
 
   const groups: CheckGroup[] = []
-  const add = (g: Omit<CheckGroup, 'count' | 'articles'>, found: { total: number; items: ArticleCard[] }) => {
-    if (found.total) groups.push({ ...g, count: found.total, articles: found.items })
+  const url = db.prepare('SELECT url FROM articles WHERE id = ?')
+  const inProject = db.prepare('SELECT 1 FROM need_articles WHERE article_id = ? UNION SELECT 1 FROM render_markers WHERE article_id = ?')
+  const add = (g: Omit<CheckGroup, 'count' | 'articles' | 'inProjectIds' | 'links'>, found: { total: number; items: ArticleCard[] }) => {
+    if (found.total) {
+      const inProjectIds = found.items.filter((a) => inProject.get(a.id, a.id)).map((a) => a.id)
+      const links: Record<number, string> = {}
+      for (const a of found.items) {
+        const r = url.get(a.id) as { url: string | null } | undefined
+        if (r?.url) links[a.id] = r.url
+      }
+      groups.push({ ...g, count: found.total, articles: found.items, inProjectIds, links })
+    }
   }
 
   const images = db.prepare('SELECT id, rel_path FROM images').all() as { id: number; rel_path: string }[]
@@ -51,7 +61,7 @@ export function checkDatabase(db: DatabaseSync, paths: DataPaths, now = new Date
     byId('gone')
   )
   add(
-    { id: 'in-trash', severity: 'warning', title: 'Dans un projet mais à la corbeille', description: 'Ces articles sont encore proposés dans un design book.' },
+    { id: 'in-trash', severity: 'warning', title: 'Dans un projet mais à la corbeille', description: 'Ces articles sont encore proposés dans un design book : retirez-les des projets, ou remettez-les dans la shopping list.' },
     {
       total: (db.prepare('SELECT count(DISTINCT na.article_id) AS n FROM need_articles na JOIN articles a ON a.id = na.article_id WHERE a.deleted_at IS NOT NULL').get() as { n: number }).n,
       items: (
@@ -77,7 +87,7 @@ export function checkDatabase(db: DatabaseSync, paths: DataPaths, now = new Date
   add({ id: 'no-link', severity: 'info', title: 'Sans lien', description: 'Aucune adresse du produit.' }, byId('no-link'))
   add({ id: 'no-category', severity: 'info', title: 'Sans catégorie', description: 'Ils n’apparaissent dans aucun filtre.' }, byId('no-category'))
   add(
-    { id: 'unverifiable', severity: 'info', title: 'Liens à vérifier à la main', description: 'Le site refuse les vérifications automatiques.' },
+    { id: 'unverifiable', severity: 'info', title: 'Liens à vérifier à la main', description: 'Le site refuse les vérifications automatiques : ouvrez le lien, puis « Vérifié à la main », ou faites-les vérifier par l’IA.' },
     byId('unverifiable')
   )
 
@@ -147,6 +157,9 @@ export function checkGroupIds(db: DatabaseSync, paths: DataPaths, groupId: strin
       .all() as { id: number }[]
     return rows.map((r) => r.id)
   }
+  if (groupId === 'in-trash') {
+    return (db.prepare('SELECT DISTINCT na.article_id AS id FROM need_articles na JOIN articles a ON a.id = na.article_id WHERE a.deleted_at IS NOT NULL').all() as { id: number }[]).map((r) => r.id)
+  }
   const images = groupId === 'missing-files' ? (db.prepare('SELECT id, rel_path FROM images').all() as { id: number; rel_path: string }[]) : []
   const c = conditions(missingImages(images, paths), now)[groupId]
   if (!c) return []
@@ -189,9 +202,9 @@ export async function checkLinks(
   const limit = new Date(now().getTime() - 182 * DAY).toISOString()
   const rows = db
     .prepare(
-      "SELECT id, url FROM articles WHERE deleted_at IS NULL AND url IS NOT NULL AND (link_checked_at IS NULL OR link_checked_at < ?) ORDER BY link_checked_at IS NOT NULL, link_checked_at, id"
+      "SELECT id, url, link_manual_at FROM articles WHERE deleted_at IS NULL AND url IS NOT NULL AND (link_checked_at IS NULL OR link_checked_at < ?) ORDER BY link_checked_at IS NOT NULL, link_checked_at, id"
     )
-    .all(limit) as { id: number; url: string }[]
+    .all(limit) as { id: number; url: string; link_manual_at: string | null }[]
   const progress: LinkCheckProgress = { done: 0, total: rows.length, gone: 0 }
   const update = db.prepare('UPDATE articles SET link_status = ?, link_checked_at = ? WHERE id = ?')
   let next = 0
@@ -205,6 +218,8 @@ export async function checkLinks(
       } catch {
         status = 'unverifiable'
       }
+      // Vérifié à la main par Mélanie : un site qui refuse encore les robots ne la dérange plus.
+      if (status === 'unverifiable' && r.link_manual_at) status = 'ok'
       update.run(status, now().toISOString(), r.id)
       progress.done++
       if (status === 'gone') progress.gone++

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Element, Page } from '@shared/book'
 import { bookHtml, exported } from './html'
-import { buildBook, exportedPages, reportLayout, type BookArticle, type BookData, type BookNote } from './layout'
+import { buildBook, exportedPages, reportLayout, socialLinks, type BookArticle, type BookData, type BookNote } from './layout'
 
 const NOTE: BookNote = { id: 5, pageKey: 'render:2', kind: 'text', x: 30, y: 180, w: 90, h: null, image: null, style: {}, text: '' }
 
@@ -29,6 +29,7 @@ const data = (over: Partial<BookData> = {}): BookData => ({
   address: '1 rue Exemple',
   phone: '00 00 00 00 00',
   email: 'contact@exemple.fr',
+  social: [],
   reviewQr: null,
   intro: 'Avant-propos',
   wishes: 'Vos envies',
@@ -167,6 +168,21 @@ describe('design book', () => {
     const client = pages[0].elements.find((e): e is TextElement => e.id === 'client')!
     expect(client.style).toMatchObject({ color: '#5E4553', underline: true, weight: 500 })
     expect(client.adjusted).toBe(true)
+  })
+
+  it('met le site et les réseaux en liens cliquables sur la 4e de couverture', () => {
+    const social = socialLinks({ website: 'https://www.exemple.fr/', facebook: 'https://www.facebook.com/decoexemple', instagram: '@deco_exemple' })
+    expect(social.map((l) => [l.label, l.url])).toEqual([
+      ['exemple.fr', 'https://www.exemple.fr/'],
+      ['decoexemple', 'https://www.facebook.com/decoexemple'],
+      ['@deco_exemple', 'https://instagram.com/deco_exemple']
+    ])
+    expect(socialLinks({ website: 'javascript:alert(1)', facebook: '', instagram: '' })).toEqual([])
+    const back = buildBook(data({ social })).at(-1)!
+    const links = back.elements.filter((e): e is TextElement => e.type === 'text' && !!e.link)
+    expect(links.map((e) => e.link)).toEqual(social.map((l) => l.url))
+    expect(Math.max(...back.elements.filter((e) => e.x < 190).map((e) => e.y + e.h))).toBeLessThan(200)
+    expect(bookHtml([back])).toContain('href="https://www.facebook.com/decoexemple"')
   })
 
   it('met m·deko en grand sur la couverture, le client et la date en bas', () => {

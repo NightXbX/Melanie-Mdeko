@@ -4472,3 +4472,49 @@ img.pv {
   opacity: 0;
   cursor: pointer;
 }
+
+/* Aperçu étroit (à côté des étapes du projet) : la barre d'outils passe en icônes, sur une ou deux lignes. */
+.book-preview {
+  container-type: inline-size;
+}
+
+@container (max-width: 980px) {
+  .pv-tool-label,
+  .pv-group-label {
+    display: none;
+  }
+
+  .pv-tool {
+    min-width: 30px;
+    height: 30px;
+  }
+
+  .pv-group-tools {
+    min-height: 32px;
+  }
+
+  .pv-group {
+    padding: 0 6px;
+  }
+}
+
+/* Vérification : actions sous chaque article (retirer des projets, vérifié à la main…) */
+.check-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.check-card-actions:empty {
+  display: none;
+}
+
+.check-card-actions .button {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.price-row-actions {
+  flex-wrap: wrap;
+}

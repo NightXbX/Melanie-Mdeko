@@ -121,6 +121,10 @@ export interface DesignerSettings {
   address: string
   phone: string
   email: string
+  // Liens montrés (cliquables) sur la 4e de couverture ; vide = absent.
+  website: string
+  facebook: string
+  instagram: string
   reviewQrUrl: string | null
   introText: string
   wishesText: string // « {pieces} » est remplacé par les pièces du projet

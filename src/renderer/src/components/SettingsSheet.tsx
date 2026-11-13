@@ -59,10 +59,10 @@ export function SettingsSheet({ onClose }: { onClose(): void }) {
     onClose()
   }
 
-  const input = (key: 'designerName' | 'address' | 'phone' | 'email', label: string) => (
+  const input = (key: 'designerName' | 'address' | 'phone' | 'email' | 'website' | 'facebook' | 'instagram', label: string, placeholder?: string) => (
     <label className="field">
       <span>{label}</span>
-      <input value={s[key]} onChange={(e) => setS({ ...s, [key]: e.target.value })} />
+      <input value={s[key]} placeholder={placeholder} onChange={(e) => setS({ ...s, [key]: e.target.value })} />
     </label>
   )
   const area = (key: 'introText' | 'wishesText' | 'closingText' | 'mailBody', label: string) => (
@@ -95,6 +95,12 @@ export function SettingsSheet({ onClose }: { onClose(): void }) {
           <div className="field-row">
             {input('address', 'Adresse')}
             {input('email', 'E-mail')}
+          </div>
+          <p className="section-note">Site et réseaux : collez l’adresse de la page. Ils apparaissent en liens cliquables sur la dernière page du book.</p>
+          <div className="field-row">
+            {input('website', 'Site internet', 'https://…')}
+            {input('facebook', 'Facebook', 'https://www.facebook.com/…')}
+            {input('instagram', 'Instagram', 'https://www.instagram.com/…')}
           </div>
           <div className="field">
             <span>QR code « Laisser un avis »</span>

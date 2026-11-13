@@ -342,6 +342,8 @@ export interface CheckGroup {
   description: string
   count: number
   articles: ArticleCard[] // les premiers seulement
+  inProjectIds: number[] // parmi eux, ceux qui sont dans un projet (shopping list ou repère d'un plan)
+  links: Record<number, string> // lien de la page produit des articles affichés
 }
 
 export interface CheckReport {
@@ -385,6 +387,10 @@ export interface MdekoApi {
   trashArticle(id: number): Promise<void>
   trashArticles(ids: number[]): Promise<void> // une seule annulation (⌘Z) pour tous
   countInProjects(ids: number[]): Promise<number>
+  // Retire ces articles de tous les projets (un seul ⌘Z) ; renvoie le nombre de projets touchés.
+  removeFromProjects(ids: number[]): Promise<number>
+  // Lien ou prix vérifié à la main : l'article sort de l'anomalie (un seul ⌘Z).
+  markVerified(ids: number[], what: 'link' | 'price'): Promise<void>
   restoreArticle(id: number): Promise<void>
   listTrash(): Promise<ArticleCard[]>
   emptyTrash(): Promise<{ deleted: number; keptInProjects: number }>
@@ -429,6 +435,8 @@ export const IPC = {
   trashArticle: 'articles:trash',
   trashArticles: 'articles:trash-many',
   countInProjects: 'articles:count-in-projects',
+  removeFromProjects: 'articles:remove-from-projects',
+  markVerified: 'articles:mark-verified',
   restoreArticle: 'articles:restore',
   listTrash: 'articles:list-trash',
   emptyTrash: 'articles:empty-trash',

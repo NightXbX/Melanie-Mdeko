@@ -4,7 +4,7 @@ import type { ArticleCard } from '@shared/api'
 import { formatPrice } from '@shared/format'
 import { DEFAULT_PAINT_BRAND } from '@shared/projects'
 import { getProject, getSettings, listAdjustments, listArtisans, listHiddenPages, listNotes, listPaints, projectTitle, wishesText } from '../projects'
-import type { BookArticle, BookData, ImageRef } from './layout'
+import { socialLinks, type BookArticle, type BookData, type ImageRef } from './layout'
 
 const MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
 
@@ -82,6 +82,7 @@ export function bookData(db: DatabaseSync, dataRoot: string, projectId: number):
     address: settings.address,
     phone: settings.phone,
     email: settings.email,
+    social: socialLinks(settings),
     reviewQr: qrId ? imageRef(db, dataRoot, 'id', Number(qrId)) : null,
     intro: project.texts.intro ?? settings.introText,
     wishes: wishesText(project, settings),

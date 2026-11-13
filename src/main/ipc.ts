@@ -21,6 +21,8 @@ import {
   listTrash,
   restoreArticle,
   countInProjects,
+  markVerified,
+  removeFromProjects,
   saveArticle,
   trashArticle,
   trashArticles,
@@ -77,6 +79,8 @@ export function registerIpc(db: DatabaseSync, paths: DataPaths, backupNow: () =>
   ipcMain.handle(IPC.trashArticle, (_e, id: number) => trashArticle(db, id, undo))
   ipcMain.handle(IPC.trashArticles, (_e, ids: number[]) => trashArticles(db, ids, undo))
   ipcMain.handle(IPC.countInProjects, (_e, ids: number[]) => countInProjects(db, ids))
+  ipcMain.handle(IPC.removeFromProjects, (_e, ids: number[]) => removeFromProjects(db, ids, undo))
+  ipcMain.handle(IPC.markVerified, (_e, ids: number[], what: 'link' | 'price') => markVerified(db, ids, what === 'price' ? 'price' : 'link', undo))
   ipcMain.handle(IPC.cropSource, (_e, imageId: number): CropSource => cropSource(db, imageId))
   ipcMain.handle(IPC.readImage, (_e, imageId: number) => readImage(db, paths.root, imageId))
   ipcMain.handle(IPC.saveCrop, (_e, sourceId: number, rect: CropRect, upload: ImageUpload | null) => saveCrop(db, paths.root, sourceId, rect, upload))

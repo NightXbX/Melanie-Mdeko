@@ -166,7 +166,10 @@ export async function checkPrices(
         (row.status === 'found' && (row.foundCents !== row.currentCents || (row.foundKind !== row.currentKind && row.currentKind !== 'unknown'))) ||
         row.status === 'unavailable' ||
         row.status === 'not_product'
-      if (row.status === 'found' && !differs) db.prepare('UPDATE articles SET link_status = ?, link_checked_at = ? WHERE id = ?').run('ok', new Date().toISOString(), a.id)
+      // La lecture de la page par l'IA vaut vérification du lien (même pour les sites qui refusent les robots).
+      const link = row.status === 'found' ? 'ok' : row.status === 'unavailable' || row.status === 'not_product' ? 'gone' : null
+      if (link) db.prepare('UPDATE articles SET link_status = ?, link_checked_at = ? WHERE id = ?').run(link, new Date().toISOString(), a.id)
+      if (row.status === 'found' && !differs) db.prepare('UPDATE articles SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), a.id)
       if (differs || row.status === 'unknown') rows.push(row)
       if (differs) progress.differences++
       progress.done++

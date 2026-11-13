@@ -237,6 +237,99 @@ export function countInProjects(db: DatabaseSync, ids: number[]): number {
   return (db.prepare(`SELECT count(DISTINCT article_id) AS n FROM need_articles WHERE article_id IN (${list})`).get() as { n: number }).n
 }
 
+// Lignes d'une table (colonnes lues en base), pour les remettre telles quelles à l'annulation.
+function reinsert(db: DatabaseSync, table: string, rows: Row[]): void {
+  for (const r of rows) {
+    const cols = Object.keys(r)
+    db.prepare(`INSERT OR REPLACE INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...(cols.map((c) => r[c]) as never[]))
+  }
+}
+
+// Retire ces articles de tous les projets (écran Vérification) : un « Mon choix » retiré laisse la place
+// à la première proposition ; un besoin resté vide disparaît ; les repères sur les plans 3D aussi.
+// Un seul ⌘Z remet tout. Renvoie le nombre de projets touchés.
+export function removeFromProjects(db: DatabaseSync, ids: number[], undo: UndoStack): number {
+  const list = ids.filter(Number.isInteger)
+  if (!list.length) return 0
+  const inList = `(${list.join(', ')})`
+  const needIds = (db.prepare(`SELECT DISTINCT need_id FROM need_articles WHERE article_id IN ${inList}`).all() as { need_id: number }[]).map((r) => r.need_id)
+  const markers = db.prepare(`SELECT * FROM render_markers WHERE article_id IN ${inList}`).all() as Row[]
+  if (!needIds.length && !markers.length) return 0
+  const needList = `(${needIds.join(', ') || 'NULL'})`
+  const before = {
+    needs: db.prepare(`SELECT * FROM needs WHERE id IN ${needList}`).all() as Row[],
+    articles: db.prepare(`SELECT * FROM need_articles WHERE need_id IN ${needList}`).all() as Row[],
+    images: db.prepare(`SELECT * FROM need_images WHERE need_id IN ${needList}`).all() as Row[]
+  }
+  const projects = new Set([
+    ...before.needs.map((n) => n.project_id as number),
+    ...(db.prepare(`SELECT DISTINCT r.project_id FROM render_markers m JOIN renders r ON r.id = m.render_id WHERE m.article_id IN ${inList}`).all() as { project_id: number }[]).map((r) => r.project_id)
+  ])
+  inTransaction(db, () => {
+    db.prepare(`DELETE FROM render_markers WHERE article_id IN ${inList}`).run()
+    for (const needId of needIds) {
+      const lostChoice = db.prepare(`SELECT 1 FROM need_articles WHERE need_id = ? AND role = 'choice' AND article_id IN ${inList}`).get(needId)
+      db.prepare(`DELETE FROM need_articles WHERE need_id = ? AND article_id IN ${inList}`).run(needId)
+      const rest = db.prepare('SELECT article_id FROM need_articles WHERE need_id = ? ORDER BY role = \'choice\' DESC, sort').all(needId) as { article_id: number }[]
+      if (!rest.length) {
+        db.prepare('DELETE FROM needs WHERE id = ?').run(needId)
+      } else if (lostChoice) {
+        db.prepare("UPDATE need_articles SET role = 'choice' WHERE need_id = ? AND article_id = ?").run(needId, rest[0].article_id)
+        db.prepare('DELETE FROM need_images WHERE need_id = ?').run(needId)
+      }
+    }
+    const at = now()
+    for (const id of projects) db.prepare('UPDATE projects SET updated_at = ? WHERE id = ?').run(at, id)
+  })
+  undo.push({
+    label: list.length === 1 ? 'L’article est revenu dans ses projets' : `${list.length} articles sont revenus dans leurs projets`,
+    articleId: list[0],
+    articleIds: list,
+    undo: () =>
+      inTransaction(db, () => {
+        db.prepare(`DELETE FROM need_articles WHERE need_id IN ${needList}`).run()
+        db.prepare(`DELETE FROM need_images WHERE need_id IN ${needList}`).run()
+        reinsert(db, 'needs', before.needs)
+        reinsert(db, 'need_articles', before.articles)
+        reinsert(db, 'need_images', before.images)
+        reinsert(db, 'render_markers', markers)
+      })
+  })
+  return projects.size
+}
+
+// Vérifié à la main (écran Vérification) : le lien existe bien, ou le prix est le bon. L'article ne revient
+// plus dans « Liens à vérifier à la main » ni dans « Prix à revoir ». Un seul ⌘Z pour tous.
+export function markVerified(db: DatabaseSync, ids: number[], what: 'link' | 'price', undo: UndoStack): void {
+  const list = ids.filter(Number.isInteger)
+  if (!list.length) return
+  const before = db.prepare(`SELECT id, link_status, link_checked_at, link_manual_at, updated_at FROM articles WHERE id IN (${list.join(', ')})`).all() as Row[]
+  const at = now()
+  inTransaction(db, () => {
+    for (const id of list) {
+      if (what === 'link') db.prepare("UPDATE articles SET link_status = 'ok', link_checked_at = ?, link_manual_at = ? WHERE id = ?").run(at, at, id)
+      else db.prepare("UPDATE articles SET updated_at = ?, link_status = CASE WHEN link_status = 'gone' THEN link_status ELSE 'ok' END, link_manual_at = ? WHERE id = ?").run(at, at, id)
+    }
+  })
+  undo.push({
+    label: list.length === 1 ? 'Vérification annulée' : `Vérification de ${list.length} articles annulée`,
+    articleId: list[0],
+    articleIds: list,
+    undo: () =>
+      inTransaction(db, () => {
+        for (const r of before) {
+          db.prepare('UPDATE articles SET link_status = ?, link_checked_at = ?, link_manual_at = ?, updated_at = ? WHERE id = ?').run(
+            r.link_status as string,
+            r.link_checked_at as string | null,
+            r.link_manual_at as string | null,
+            r.updated_at as string,
+            r.id as number
+          )
+        }
+      })
+  })
+}
+
 export function restoreArticle(db: DatabaseSync, id: number, undo: UndoStack): void {
   const r = db.prepare('SELECT name, deleted_at FROM articles WHERE id = ?').get(id) as { name: string; deleted_at: string }
   setDeleted(db, id, null)

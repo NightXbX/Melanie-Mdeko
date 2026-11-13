@@ -8,6 +8,8 @@ import {
   emptyTrash,
   getArticleInput,
   listTrash,
+  markVerified,
+  removeFromProjects,
   restoreArticle,
   saveArticle,
   trashArticle,
@@ -60,6 +62,35 @@ describe('corbeille en lot', () => {
     expect(entry.label).toMatch(/2 articles/)
     entry.undo()
     expect(listTrash(db)).toEqual([])
+  })
+})
+
+describe('écran Vérification : retirer des projets, vérifié à la main', () => {
+  it('retire des projets : la première proposition devient « Mon choix », un besoin vide disparaît, ⌘Z remet tout', () => {
+    const [a, b, c] = ['Lampe', 'Applique', 'Suspension'].map((name) => saveArticle(db, input({ name }), undo))
+    db.prepare("INSERT INTO projects (id, client_name) VALUES (1, 'Mme Durand')").run()
+    db.prepare('INSERT INTO needs (id, project_id) VALUES (10, 1), (11, 1)').run()
+    db.prepare("INSERT INTO need_articles (need_id, article_id, role, sort) VALUES (10, ?, 'choice', 0), (10, ?, 'alternative', 1), (11, ?, 'choice', 0)").run(a, b, c)
+    expect(removeFromProjects(db, [a, c], undo)).toBe(1)
+    expect(db.prepare('SELECT need_id, article_id, role FROM need_articles').all()).toEqual([{ need_id: 10, article_id: b, role: 'choice' }])
+    expect(db.prepare('SELECT id FROM needs').all()).toEqual([{ id: 10 }])
+    undo.pop()!.undo()
+    expect(db.prepare('SELECT need_id, article_id, role FROM need_articles ORDER BY need_id, sort').all()).toEqual([
+      { need_id: 10, article_id: a, role: 'choice' },
+      { need_id: 10, article_id: b, role: 'alternative' },
+      { need_id: 11, article_id: c, role: 'choice' }
+    ])
+  })
+
+  it('note un lien vérifié à la main, annulable', () => {
+    const a = saveArticle(db, input(), undo)
+    db.prepare("UPDATE articles SET link_status = 'unverifiable' WHERE id = ?").run(a)
+    markVerified(db, [a], 'link', undo)
+    const row = () => db.prepare('SELECT link_status, link_manual_at FROM articles WHERE id = ?').get(a) as { link_status: string; link_manual_at: string | null }
+    expect(row().link_status).toBe('ok')
+    expect(row().link_manual_at).not.toBeNull()
+    undo.pop()!.undo()
+    expect(row()).toEqual({ link_status: 'unverifiable', link_manual_at: null })
   })
 })
 

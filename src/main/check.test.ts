@@ -80,4 +80,12 @@ describe('vérification de la base', () => {
     expect(status.link_status).toBe('gone')
     expect((await checkLinks(db, async () => ({ status: 200, finalUrl: null }), () => {}, () => false)).total).toBe(0)
   })
+
+  it('ne remet pas « à vérifier à la main » un lien que Mélanie a vérifié', async () => {
+    db.prepare("UPDATE articles SET link_manual_at = '2026-01-01T00:00:00Z' WHERE id = 1").run()
+    await checkLinks(db, async () => ({ status: 403, finalUrl: null }), () => {}, () => false)
+    const status = (id: number) => (db.prepare('SELECT link_status FROM articles WHERE id = ?').get(id) as { link_status: string }).link_status
+    expect(status(1)).toBe('ok')
+    expect(status(3)).toBe('unverifiable')
+  })
 })

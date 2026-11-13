@@ -9,13 +9,23 @@ import { Toolbar } from '../components/Toolbar'
 
 const SEVERITY = { error: 'À corriger', warning: 'À regarder', info: 'Pour compléter' }
 
+// Anomalies qu'on peut lever en notant « vérifié à la main » : le lien, ou le prix.
+const VERIFY: Record<string, 'link' | 'price' | undefined> = { unverifiable: 'link', 'stale-price': 'price', gone: 'link' }
+
+export interface AiRequest {
+  ids: number[]
+  label: string
+  nonce: number
+}
+
 const size = (bytes: number) => (bytes > 1e6 ? `${(bytes / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} Mo` : `${Math.ceil(bytes / 1e3)} Ko`)
 
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString('fr-FR')} ${n > 1 ? many : one}`
 
 // Bilan de santé de la shopping list : fichier de la base, articles incomplets, en double, disparus ou pas à jour.
-// Un clic sur un article ouvre sa fiche pour le corriger. On peut aussi mettre à la corbeille un article,
-// une sélection ou toute une anomalie d'un coup (un seul ⌘Z les fait revenir).
+// Un clic sur un article ouvre sa fiche pour le corriger. Pour un article, une sélection ou toute une anomalie :
+// mettre à la corbeille, retirer des projets, remettre dans la shopping list, marquer « vérifié à la main »
+// ou faire vérifier par l'IA. Chaque action groupée s'annule d'un seul ⌘Z.
 export function CheckView() {
   const { dataVersion, refresh, notify } = useApp()
   const [report, setReport] = useState<CheckReport | null>(null)
@@ -24,6 +34,7 @@ export function CheckView() {
   const [links, setLinks] = useState<LinkCheckProgress | null>(null)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [busy, setBusy] = useState(false)
+  const [aiRequest, setAiRequest] = useState<AiRequest | null>(null)
 
   useEffect(() => {
     void window.mdeko.checkDatabase().then(setReport)
@@ -66,6 +77,62 @@ export function CheckView() {
     } finally {
       setBusy(false)
     }
+    // Pour tout enlever d'un coup : on propose aussitôt de les retirer aussi des projets.
+    if (inProjects) {
+      const also = await window.mdeko.confirm(
+        ids.length === 1 ? 'Le retirer aussi de ses projets ?' : `Les retirer aussi de leurs projets ?`,
+        'Sinon, ils restent proposés dans les design books, et reviennent ici dans « Dans un projet mais à la corbeille ». Un « Mon choix » retiré laisse la place à la première proposition.',
+        'Retirer des projets'
+      )
+      if (also) await removeFromProjects(ids, false)
+    }
+  }
+
+  // Retire des articles de tous les projets (un « Mon choix » laisse la place à la première proposition).
+  const removeFromProjects = async (ids: number[], ask = true) => {
+    if (!ids.length || busy) return
+    if (ask) {
+      const ok = await window.mdeko.confirm(
+        ids.length === 1 ? 'Retirer cet article de ses projets ?' : `Retirer ${plural(ids.length, 'article', 'articles')} de leurs projets ?`,
+        'Ils ne seront plus proposés dans les design books (ni repérés sur les plans 3D). Un « Mon choix » retiré laisse la place à la première proposition ; un besoin vide disparaît. ⌘Z annule.',
+        'Retirer des projets'
+      )
+      if (!ok) return
+    }
+    setBusy(true)
+    try {
+      const projects = await window.mdeko.removeFromProjects(ids)
+      setSelected((s) => new Set([...s].filter((id) => !ids.includes(id))))
+      refresh()
+      notify(projects ? `Retiré de ${plural(projects, 'projet', 'projets')}` : 'Ces articles n’étaient dans aucun projet', true)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const verified = async (ids: number[], what: 'link' | 'price') => {
+    if (!ids.length || busy) return
+    setBusy(true)
+    try {
+      await window.mdeko.markVerified(ids, what)
+      setSelected((s) => new Set([...s].filter((id) => !ids.includes(id))))
+      refresh()
+      notify(ids.length === 1 ? 'Noté : vérifié à la main' : `${plural(ids.length, 'article noté', 'articles notés')} « vérifié à la main »`, true)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const restore = async (ids: number[]) => {
+    for (const id of ids) await window.mdeko.restoreArticle(id)
+    refresh()
+    notify(ids.length === 1 ? 'L’article est revenu dans la shopping list' : `${plural(ids.length, 'article est revenu', 'articles sont revenus')} dans la shopping list`)
+  }
+
+  const askAi = async (g: CheckGroup) => {
+    const ids = await window.mdeko.checkGroupIds(g.id)
+    setAiRequest({ ids, label: `« ${g.title} »`, nonce: Date.now() })
+    document.querySelector('.check-prices')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   const trashOne = (a: Card) => trash([a.id], `Mettre « ${a.name} » à la corbeille ?`, 'Vous pourrez le récupérer depuis la Corbeille.')
@@ -161,7 +228,13 @@ export function CheckView() {
           )}
         </section>
 
-        <PriceCheck onEdit={setEditing} />
+        <PriceCheck
+          onEdit={setEditing}
+          request={aiRequest}
+          onTrash={(a) => void trash([a.articleId], `Mettre « ${a.name} » à la corbeille ?`, 'Vous pourrez le récupérer depuis la Corbeille.')}
+          onRemoveFromProjects={(a) => void removeFromProjects([a.articleId])}
+          onVerified={(a) => void verified([a.articleId], 'price')}
+        />
 
         {report.groups.length === 0 && <p className="section-note">Aucune anomalie trouvée dans la shopping list.</p>}
         {report.groups.map((g) => (
@@ -176,6 +249,16 @@ export function CheckView() {
             </button>
             {open === g.id && (
               <>
+                {g.id === 'in-trash' && (
+                  <div className="check-group-actions">
+                    <button type="button" className="button button-danger" disabled={busy} onClick={() => void window.mdeko.checkGroupIds(g.id).then((ids) => removeFromProjects(ids))}>
+                      Tout retirer des projets ({g.count.toLocaleString('fr-FR')})
+                    </button>
+                    <button type="button" className="button" disabled={busy} onClick={() => void window.mdeko.checkGroupIds(g.id).then(restore)}>
+                      Tout remettre dans la shopping list
+                    </button>
+                  </div>
+                )}
                 {g.id !== 'in-trash' && (
                   <div className="check-group-actions">
                     {(() => {
@@ -199,6 +282,42 @@ export function CheckView() {
                         </button>
                       )
                     })()}
+                    {(g.id === 'unverifiable' || g.id === 'stale-price' || g.id === 'gone') && (
+                      <button type="button" className="button button-primary" disabled={busy} onClick={() => void askAi(g)}>
+                        Faire vérifier par l’IA
+                      </button>
+                    )}
+                    {VERIFY[g.id] && g.id !== 'gone' && (
+                      <button
+                        type="button"
+                        className="button"
+                        disabled={busy}
+                        onClick={async () => {
+                          const ids = await window.mdeko.checkGroupIds(g.id)
+                          const ok = await window.mdeko.confirm(
+                            `Tout noter « vérifié à la main » (${ids.length.toLocaleString('fr-FR')}) ?`,
+                            'Ils disparaîtront de cette liste. ⌘Z annule.',
+                            'Tout noter vérifié'
+                          )
+                          if (ok) await verified(ids, VERIFY[g.id]!)
+                        }}
+                      >
+                        Tout noter vérifié
+                      </button>
+                    )}
+                    {g.inProjectIds.length > 0 && g.id !== 'duplicates' && (
+                      <button
+                        type="button"
+                        className="button"
+                        disabled={busy}
+                        onClick={async () => {
+                          const ids = await window.mdeko.checkGroupIds(g.id)
+                          await removeFromProjects(ids)
+                        }}
+                      >
+                        Tout retirer des projets
+                      </button>
+                    )}
                     <button type="button" className="button button-danger" disabled={busy} onClick={() => void trashGroup(g)}>
                       <Icon name="trash" size={14} />
                       {g.id === 'duplicates' ? 'Garder un seul article par produit' : g.count > 1 ? `Tout mettre à la corbeille (${g.count.toLocaleString('fr-FR')})` : 'Mettre à la corbeille'}
@@ -214,6 +333,36 @@ export function CheckView() {
                           g.id === 'in-trash' ? notify('Remettez-le dans la shopping list depuis la corbeille, ou retirez-le du projet.') : setEditing(id)
                         }
                       />
+                      <div className="check-card-actions">
+                        {g.id === 'in-trash' ? (
+                          <>
+                            <button type="button" className="button button-small" disabled={busy} onClick={() => void removeFromProjects([a.id])}>
+                              Retirer des projets
+                            </button>
+                            <button type="button" className="button button-small" disabled={busy} onClick={() => void restore([a.id])}>
+                              Remettre dans la shopping list
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            {(g.id === 'unverifiable' || g.id === 'gone') && g.links[a.id] && (
+                              <button type="button" className="button button-small" onClick={() => void window.mdeko.openExternal(g.links[a.id])}>
+                                Ouvrir le lien
+                              </button>
+                            )}
+                            {VERIFY[g.id] && (
+                              <button type="button" className="button button-small" disabled={busy} onClick={() => void verified([a.id], VERIFY[g.id]!)}>
+                                {g.id === 'gone' ? 'Toujours en vente' : VERIFY[g.id] === 'price' ? 'Prix vérifié' : 'Vérifié à la main'}
+                              </button>
+                            )}
+                            {g.inProjectIds.includes(a.id) && (
+                              <button type="button" className="button button-small" disabled={busy} onClick={() => void removeFromProjects([a.id])}>
+                                Retirer des projets
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
                       {g.id !== 'in-trash' && (
                         <>
                           <label className="check-select" title="Sélectionner">
@@ -245,6 +394,12 @@ export function CheckView() {
           <span>{plural(selected.size, 'article sélectionné', 'articles sélectionnés')}</span>
           <button type="button" className="button button-plain" onClick={() => setSelected(new Set())}>
             Tout désélectionner
+          </button>
+          <button type="button" className="button" disabled={busy} onClick={() => void verified([...selected], 'link')}>
+            Vérifié à la main
+          </button>
+          <button type="button" className="button" disabled={busy} onClick={() => void removeFromProjects([...selected])}>
+            Retirer des projets
           </button>
           <button type="button" className="button button-danger" disabled={busy} onClick={() => void trashSelection()}>
             <Icon name="trash" size={14} />

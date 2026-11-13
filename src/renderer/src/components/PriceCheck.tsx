@@ -20,13 +20,29 @@ const STATUS: Record<PriceCheckRow['status'], string> = {
   unknown: 'Prix introuvable : à vérifier à la main'
 }
 
-export function PriceCheck({ onEdit }: { onEdit(articleId: number): void }) {
+interface Props {
+  onEdit(articleId: number): void
+  request: { ids: number[]; label: string; nonce: number } | null // demandé depuis une anomalie de l'écran
+  onTrash(row: PriceCheckRow): void
+  onRemoveFromProjects(row: PriceCheckRow): void
+  onVerified(row: PriceCheckRow): void
+}
+
+export function PriceCheck({ onEdit, request, onTrash, onRemoveFromProjects, onVerified }: Props) {
   const { notify, refresh } = useApp()
   const [progress, setProgress] = useState<PriceCheckProgress | null>(null)
   const [rows, setRows] = useState<PriceCheckRow[] | null>(null)
   const [applied, setApplied] = useState<Set<number>>(new Set())
 
+  const [dismissed, setDismissed] = useState<Set<number>>(new Set())
+
   useEffect(() => window.mdeko.onPriceProgress(setProgress), [])
+
+  useEffect(() => {
+    if (request && !progress) void start(request.ids, request.label)
+  }, [request?.nonce])
+
+  const dismiss = (r: PriceCheckRow) => setDismissed(new Set([...dismissed, r.articleId]))
 
   const start = async (scope: PriceCheckScope, label: string) => {
     const { count, cents } = await window.mdeko.assistant.estimatePriceCheck(scope)
@@ -39,6 +55,7 @@ export function PriceCheck({ onEdit }: { onEdit(articleId: number): void }) {
     if (!ok) return
     setRows(null)
     setApplied(new Set())
+    setDismissed(new Set())
     setProgress({ done: 0, total: count, differences: 0 })
     try {
       const result = await window.mdeko.assistant.checkPrices(scope)
@@ -102,7 +119,7 @@ export function PriceCheck({ onEdit }: { onEdit(articleId: number): void }) {
               Appliquer les {toApply.length} nouveaux prix
             </button>
           )}
-          {rows.map((r) => (
+          {rows.filter((r) => !dismissed.has(r.articleId)).map((r) => (
             <div key={r.articleId} className={`price-row is-${r.status}`}>
               <button type="button" className="price-row-name" onClick={() => onEdit(r.articleId)}>
                 <strong>{r.name}</strong>
@@ -118,6 +135,21 @@ export function PriceCheck({ onEdit }: { onEdit(articleId: number): void }) {
                 <button type="button" className="button button-plain" onClick={() => void window.mdeko.openExternal(r.url)}>
                   Voir la page
                 </button>
+                {(r.status === 'unavailable' || r.status === 'not_product') && (
+                  <>
+                    <button type="button" className="button" onClick={() => (onRemoveFromProjects(r), dismiss(r))}>
+                      Retirer des projets
+                    </button>
+                    <button type="button" className="button button-danger" onClick={() => (onTrash(r), dismiss(r))}>
+                      Mettre à la corbeille
+                    </button>
+                  </>
+                )}
+                {r.status !== 'found' && (
+                  <button type="button" className="button" onClick={() => (onVerified(r), dismiss(r))}>
+                    Vérifié à la main
+                  </button>
+                )}
                 {r.status === 'found' &&
                   (applied.has(r.articleId) ? (
                     <span className="price-row-done">Appliqué</span>

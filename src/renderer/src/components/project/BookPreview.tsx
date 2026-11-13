@@ -612,7 +612,7 @@ function ToolButton({
       className={`pv-tool${compact ? ' is-compact' : ''}${pressed ? ' is-pressed' : ''}`}
       aria-label={label}
       aria-pressed={pressed}
-      title={compact ? label : undefined}
+      title={label}
       disabled={disabled}
       onClick={onClick}
     >

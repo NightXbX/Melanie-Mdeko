@@ -53,6 +53,7 @@ export interface BookData {
   address: string
   phone: string
   email: string
+  social: SocialLink[] // site, Facebook, Instagram (4e de couverture)
   reviewQr: ImageRef | null
   intro: string
   wishes: string
@@ -176,6 +177,35 @@ function coverPage(d: BookData): Page {
 
 // 4e de couverture : à gauche le logo, le nom et les coordonnées en lignes étiquetées ; à droite un bandeau
 // taupe sur toute la hauteur, avec le QR code « avis » dans une carte blanche (sans QR code : le logo en clair).
+export interface SocialLink {
+  id: 'website' | 'facebook' | 'instagram'
+  label: string // ce qui est écrit, court (« mdeko.com », « @compte »)
+  url: string
+}
+
+// Liens des Réglages, rendus sûrs (https) et lisibles : le nom du site, le nom de la page, le @compte.
+export function socialLinks(s: { website: string; facebook: string; instagram: string }): SocialLink[] {
+  const out: SocialLink[] = []
+  for (const id of ['website', 'facebook', 'instagram'] as const) {
+    const raw = s[id].trim()
+    if (!raw) continue
+    let url: URL
+    try {
+      url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw.replace(/^@/, id === 'instagram' ? 'instagram.com/' : '')}`)
+    } catch {
+      continue
+    }
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') continue
+    const account = url.pathname.split('/').filter(Boolean)[0] ?? ''
+    const host = url.hostname.replace(/^www\./, '')
+    const label = id === 'website' ? host + url.pathname.replace(/\/$/, '') : id === 'instagram' ? (account ? `@${account}` : host) : account || host
+    out.push({ id, label, url: url.href })
+  }
+  return out
+}
+
+const SOCIAL_NAMES = { website: 'Site', facebook: 'Facebook', instagram: 'Instagram' }
+
 function backCover(d: BookData): Page {
   const panel = { x: 192, w: 105 }
   const center = panel.x + panel.w / 2
@@ -201,6 +231,18 @@ function backCover(d: BookData): Page {
       text({ x: 32, y: y + 5, w: 140, h: 6 * rows }, value.trim(), { size: 12, weight: 300, lineHeight: 1.35 }, { id })
     )
     y += 14 + 6 * (rows - 1)
+  }
+  // Site et réseaux : une ligne cliquable chacun (PDF et PowerPoint), sous les coordonnées.
+  if (d.social.length) {
+    elements.push(text({ x: 32, y, w: 140, h: 5 }, 'RETROUVEZ-MOI', { size: 7.5, weight: 500, color: COLORS.taupeDark, letterSpacing: 2 }, { id: 'social-label' }))
+    y += 5
+    for (const s of d.social) {
+      elements.push(
+        text({ x: 32, y, w: 24, h: 6 }, SOCIAL_NAMES[s.id], { size: 10, weight: 300, color: COLORS.textSoft, valign: 'middle' }, { id: `${s.id}-name` }),
+        text({ x: 56, y, w: 116, h: 6 }, s.label, { size: 12, weight: 300, valign: 'middle' }, { id: s.id, link: s.url })
+      )
+      y += 6
+    }
   }
   if (d.reviewQr) {
     const card = { x: center - 30, y: 68, w: 60, h: 60 }
