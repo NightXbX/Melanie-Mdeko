@@ -953,6 +953,42 @@ html:not([data-platform='darwin']) .sidebar-titlebar {
   }
 }
 
+/* Petit mot affectueux, en haut à droite, comme une notification du Mac */
+
+.kind-word {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 380px;
+  padding: 14px 14px 14px 18px;
+  border: 1px solid var(--separator);
+  border-radius: 14px;
+  background: #fffdf8;
+  font-size: 14px;
+  line-height: 1.4;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.16);
+  animation: kind-word-in 0.35s ease-out;
+}
+
+.kind-word p {
+  margin: 0;
+}
+
+.kind-word .button {
+  flex-shrink: 0;
+}
+
+@keyframes kind-word-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
 /* Projets : liste */
 
 .projects-grid {

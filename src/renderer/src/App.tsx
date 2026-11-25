@@ -2,6 +2,7 @@ import { Assistant } from './components/Assistant'
 import { useEffect, useState } from 'react'
 import { AppProvider } from './app-context'
 import { ImportSheet } from './components/ImportSheet'
+import { KindWord } from './components/KindWord'
 import { SettingsSheet } from './components/SettingsSheet'
 import { Sidebar, type View } from './components/Sidebar'
 import { ArtisansView } from './views/ArtisansView'
@@ -63,6 +64,7 @@ export function App() {
           {view === 'trash' && <TrashView />}
         </main>
       </div>
+      <KindWord />
       {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
       {importing && (
         <ImportSheet
