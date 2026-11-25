@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import type { ChatMessageView, ChatSummary, RecordingView } from '@shared/assistant'
 import { useApp } from '../app-context'
 import { durationLabel, isAudio, prepareRecording } from '../lib/audio'
@@ -175,6 +175,22 @@ export function Assistant({ projectId, onReportChanged }: { projectId: number | 
 
   const ideas = projectId === null ? IDEAS_GENERAL : IDEAS_PROJECT
 
+  // Image vue en grand : toutes les images de la discussion, dans l'ordre, pour passer de l'une à l'autre.
+  const [viewed, setViewed] = useState<number | null>(null)
+  const allImages = messages.flatMap((m) => m.images.map((img) => ({ ...img, fromAssistant: m.role === 'assistant' })))
+
+  const retouch = (img: { id: number; url: string }) => {
+    setDraft((d) => (d.images.some((i) => i.id === img.id) ? d : { ...d, images: [...d.images, img] }))
+    input.current?.focus()
+  }
+
+  const addAsRender = async (imageId: number) => {
+    if (projectId === null) return
+    await window.mdeko.assistant.addAsRender(projectId, imageId)
+    onReportChanged?.()
+    notify('Ajoutée aux plans 3D du projet')
+  }
+
   return (
     <div
       className={`assistant${dropping ? ' is-dropping' : ''}`}
@@ -296,21 +312,16 @@ export function Assistant({ projectId, onReportChanged }: { projectId: number | 
                 <div className="assistant-images">
                   {m.images.map((img) => (
                     <figure key={img.id}>
-                      <img src={img.url} alt="" />
+                      <img src={img.url} alt="" className="assistant-zoomable" onClick={() => setViewed(img.id)} />
                       <figcaption>
-                        <button type="button" className="button button-plain" onClick={() => setDraft((d) => ({ ...d, images: [...d.images, img] }))}>
+                        <button type="button" className="button button-plain" onClick={() => setViewed(img.id)}>
+                          Voir en grand
+                        </button>
+                        <button type="button" className="button button-plain" onClick={() => retouch(img)}>
                           Retoucher
                         </button>
                         {projectId !== null && m.role === 'assistant' && (
-                          <button
-                            type="button"
-                            className="button button-plain"
-                            onClick={async () => {
-                              await window.mdeko.assistant.addAsRender(projectId, img.id)
-                              onReportChanged?.()
-                              notify('Ajoutée aux plans 3D du projet')
-                            }}
-                          >
+                          <button type="button" className="button button-plain" onClick={() => void addAsRender(img.id)}>
                             Ajouter aux plans 3D
                           </button>
                         )}
@@ -409,6 +420,112 @@ export function Assistant({ projectId, onReportChanged }: { projectId: number | 
 
       {shownTranscript && <TranscriptSheet recording={shownTranscript} onClose={() => setShownTranscript(null)} />}
       {memoryOpen && <MemorySheet projectId={projectId} onClose={() => setMemoryOpen(false)} />}
+      {viewed !== null && allImages.some((i) => i.id === viewed) && (
+        <ImageViewer
+          images={allImages}
+          current={viewed}
+          onChange={setViewed}
+          onClose={() => setViewed(null)}
+          onRetouch={(img) => {
+            retouch(img)
+            setViewed(null)
+          }}
+          onAddAsRender={projectId === null ? null : (id) => void addAsRender(id)}
+        />
+      )}
+    </div>
+  )
+}
+
+// Image en grand, sur toute la fenêtre. Clic sur l'image : taille réelle (on se déplace en faisant défiler),
+// nouveau clic : l'image entière. Flèches pour passer d'une image à l'autre, Échap pour fermer.
+function ImageViewer({
+  images,
+  current,
+  onChange,
+  onClose,
+  onRetouch,
+  onAddAsRender
+}: {
+  images: { id: number; url: string; fromAssistant: boolean }[]
+  current: number
+  onChange(id: number): void
+  onClose(): void
+  onRetouch(img: { id: number; url: string }): void
+  onAddAsRender: ((id: number) => void) | null
+}) {
+  const index = images.findIndex((i) => i.id === current)
+  const img = images[index]
+  const [zoomed, setZoomed] = useState(false)
+  const stage = useRef<HTMLDivElement>(null)
+  const go = (step: number) => {
+    const next = images[index + step]
+    if (next) {
+      setZoomed(false)
+      onChange(next.id)
+    }
+  }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+      else if (e.key === 'ArrowLeft') go(-1)
+      else if (e.key === 'ArrowRight') go(1)
+      else return
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  })
+
+  // En taille réelle, on garde sous le pointeur l'endroit cliqué.
+  const toggleZoom = (e: ReactMouseEvent<HTMLImageElement>) => {
+    const box = e.currentTarget.getBoundingClientRect()
+    const fx = (e.clientX - box.left) / box.width
+    const fy = (e.clientY - box.top) / box.height
+    const zoomIn = !zoomed
+    setZoomed(zoomIn)
+    if (!zoomIn) return
+    requestAnimationFrame(() => {
+      const el = stage.current
+      const picture = el?.querySelector('img')
+      if (!el || !picture) return
+      el.scrollLeft = fx * picture.offsetWidth - (e.clientX - el.getBoundingClientRect().left)
+      el.scrollTop = fy * picture.offsetHeight - (e.clientY - el.getBoundingClientRect().top)
+    })
+  }
+
+  return (
+    <div className="image-viewer">
+      <div ref={stage} className={`image-viewer-stage${zoomed ? ' is-zoomed' : ''}`} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+        <img src={img.url} alt="" draggable={false} onClick={toggleZoom} />
+      </div>
+      <div className="slideshow-controls">
+        <button type="button" disabled={index <= 0} onClick={() => go(-1)}>
+          ‹ Précédente
+        </button>
+        <span>
+          {index + 1} / {images.length}
+        </span>
+        <button type="button" disabled={index >= images.length - 1} onClick={() => go(1)}>
+          Suivante ›
+        </button>
+        <button type="button" onClick={() => setZoomed((z) => !z)}>
+          {zoomed ? 'Image entière' : 'Taille réelle'}
+        </button>
+        <button type="button" onClick={() => onRetouch(img)}>
+          Retoucher
+        </button>
+        {onAddAsRender && img.fromAssistant && (
+          <button type="button" onClick={() => onAddAsRender(img.id)}>
+            Ajouter aux plans 3D
+          </button>
+        )}
+        <button type="button" className="slideshow-quit" onClick={onClose}>
+          Fermer
+        </button>
+      </div>
     </div>
   )
 }
